@@ -1,0 +1,9 @@
+{
+  "name": "seatview",
+  "version": "0.2.0",
+  "private": true,
+  "description": "SeatView 演唱会座区决策助手 MVP",
+  "scripts": {
+    "start": "node server.js"
+  }
+}

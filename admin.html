@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SeatView 后台管理系统</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body class="admin-page">
+    <header class="topbar">
+      <a class="brand" href="index.html" aria-label="返回 SeatView 前台">
+        <span class="brand-mark">SV</span>
+        <span>SeatView Admin</span>
+      </a>
+      <nav class="nav-links" aria-label="后台导航">
+        <a href="index.html">返回前台</a>
+        <a href="#" id="logoutButton">退出登录</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="admin standalone" id="admin">
+        <div class="section-heading">
+          <p class="eyebrow">Admin Console</p>
+          <h2>后台管理系统</h2>
+          <p>第一版不使用 AI 自动识别。管理员整理公开信息，录入场馆、座位图、座区和视角记录，前台自动生成统一视角卡片。</p>
+        </div>
+
+        <div class="admin-layout">
+          <aside class="admin-sidebar" aria-label="后台模块">
+            <button class="active" type="button" data-admin-tab="dashboardAdmin">Dashboard</button>
+            <button type="button" data-admin-tab="venueAdmin">场馆管理</button>
+            <button type="button" data-admin-tab="mapAdmin">座位图管理</button>
+            <button type="button" data-admin-tab="sectionAdmin">座区管理</button>
+            <button type="button" data-admin-tab="recordAdmin">视角记录管理</button>
+            <button type="button" data-admin-tab="reviewAdmin">投稿审核（预留）</button>
+          </aside>
+
+          <div class="admin-content">
+            <section class="admin-panel active" id="dashboardAdmin">
+              <div class="panel-title compact"><h3>Dashboard</h3><span>查看当前数据状态</span></div>
+              <div class="dashboard-grid">
+                <article><strong id="adminVenueCount">0</strong><span>场馆数量</span></article>
+                <article><strong id="adminSectionCount">0</strong><span>座区数量</span></article>
+                <article><strong id="adminRecordCount">0</strong><span>视角记录</span></article>
+                <article><strong id="adminPendingCount">0</strong><span>待审核</span></article>
+              </div>
+              <div class="admin-note">MVP 阶段重点是流程完整、可真实演示。标签由管理员勾选，后续再接 AI 辅助识别。</div>
+            </section>
+
+            <section class="admin-panel" id="venueAdmin">
+              <div class="panel-title compact"><h3>场馆管理</h3><span>新增、编辑、删除、上下架场馆</span></div>
+              <form class="admin-form" id="venueForm">
+                <input name="venueId" type="hidden" />
+                <label>城市<input name="city" placeholder="例如：重庆" required /></label>
+                <label>场馆名称<input name="name" placeholder="例如：华熙LIVE鱼洞" required /></label>
+                <label>场馆类型<input name="type" placeholder="例如：体育场 / 体育馆" required /></label>
+                <label>容量<input name="capacity" placeholder="待核验" /></label>
+                <label>地址<input name="address" placeholder="可选" /></label>
+                <label>封面图<input name="coverImage" type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" /></label>
+                <label>发布状态
+                  <select name="status">
+                    <option selected>已发布</option>
+                    <option>草稿</option>
+                    <option>已下架</option>
+                  </select>
+                </label>
+                <label class="checkbox-row"><input name="isHot" type="checkbox" checked /> 热门场馆</label>
+                <label class="wide">简介<textarea name="description" placeholder="用于前台场馆详情展示"></textarea></label>
+                <button class="primary-wide" type="submit">保存场馆</button>
+              </form>
+              <div class="admin-list" id="venueAdminList"></div>
+            </section>
+
+            <section class="admin-panel" id="mapAdmin">
+              <div class="panel-title compact"><h3>座位图管理</h3><span>上传座位图，设置默认图</span></div>
+              <form class="admin-form" id="seatMapForm">
+                <label>场馆<select name="venueId" class="venue-select"></select></label>
+                <label>图片名称<input name="name" placeholder="例如：官方座位图" required /></label>
+                <label>图片类型
+                  <select name="mapType">
+                    <option>官方座位图</option>
+                    <option>演唱会票档图</option>
+                    <option>舞台方向图</option>
+                    <option>内场分区图</option>
+                  </select>
+                </label>
+                <label>上传图片<input name="file" type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" required /></label>
+                <label>来源<input name="sourceNote" placeholder="例如：官方票务页面" /></label>
+                <label>备注<input name="note" placeholder="可选" /></label>
+                <label class="checkbox-row"><input name="isDefault" type="checkbox" checked /> 设为默认座位图</label>
+                <button class="primary-wide" type="submit">保存座位图</button>
+              </form>
+              <div class="admin-list" id="seatMapAdminList"></div>
+            </section>
+
+            <section class="admin-panel" id="sectionAdmin">
+              <div class="panel-title compact"><h3>座区管理</h3><span>可手动维护，也可在录入视角时自动生成</span></div>
+              <form class="admin-form" id="sectionForm">
+                <input name="sectionId" type="hidden" />
+                <label>场馆<select name="venueId" class="venue-select"></select></label>
+                <label>座区名称<input name="name" placeholder="例如：301区 / 内场A区" required /></label>
+                <label>类型<input name="sectionType" placeholder="例如：看台 / 内场" /></label>
+                <label>楼层<input name="level" placeholder="例如：三层" /></label>
+                <label>位置<input name="position" placeholder="例如：侧面 / 正面 / 偏后" /></label>
+                <label class="wide">备注<textarea name="note" placeholder="例如：适合看大屏和整体舞美"></textarea></label>
+                <button class="primary-wide" type="submit">保存座区</button>
+              </form>
+              <div class="admin-list" id="sectionAdminList"></div>
+            </section>
+
+            <section class="admin-panel" id="recordAdmin">
+              <div class="panel-title compact"><h3>视角记录管理</h3><span>后台录入后，已发布记录会在前台生成统一卡片</span></div>
+              <form class="admin-form" id="recordForm">
+                <input name="recordId" type="hidden" />
+                <label>场馆<select name="venueId" id="recordVenueSelect"></select></label>
+                <label>座区名称<input name="sectionName" placeholder="例如：301区 / 内场A区" required /></label>
+                <label>排数<input name="row" placeholder="例如：15排" /></label>
+                <label>座位号（可选）<input name="seatNo" placeholder="例如：18号" /></label>
+                <label>艺人<input name="artist" placeholder="例如：五月天" /></label>
+                <label>演唱会名称（可选）<input name="eventName" placeholder="例如：回到那一天巡演" /></label>
+                <label>发布时间<input name="publishedAt" type="date" /></label>
+                <label>视角图片<input name="image" type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" /></label>
+                <label>来源平台<input name="sourcePlatform" placeholder="例如：小红书 / B站 / 用户投稿" required /></label>
+                <label>来源链接<input name="sourceUrl" placeholder="原始公开链接" /></label>
+                <label>状态
+                  <select name="status">
+                    <option>草稿</option>
+                    <option>待审核</option>
+                    <option selected>已发布</option>
+                    <option>已下架</option>
+                  </select>
+                </label>
+                <fieldset class="tag-fieldset wide">
+                  <legend>标签（管理员勾选）</legend>
+                  <div id="tagCheckboxes"></div>
+                </fieldset>
+                <label class="wide">文字评价<textarea name="reviewText" placeholder="例如：无遮挡，距离舞台略远，但整体舞美观看效果很好。"></textarea></label>
+                <button class="primary-wide" type="submit">保存视角记录</button>
+              </form>
+              <div class="admin-list" id="recordAdminList"></div>
+            </section>
+
+            <section class="admin-panel" id="reviewAdmin">
+              <div class="panel-title compact"><h3>投稿审核（预留）</h3><span>MVP 暂不开放用户投稿</span></div>
+              <div class="admin-note">后续开放用户投稿后，用户上传的图片、评价和来源链接会进入这里，管理员审核通过后再发布到前台。</div>
+              <div class="admin-list" id="reviewQueueList"></div>
+            </section>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SeatView 后台登录</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body class="login-page">
+    <main class="login-shell">
+      <section class="login-card">
+        <a class="brand login-brand" href="index.html" aria-label="返回 SeatView 前台">
+          <span class="brand-mark">SV</span>
+          <span>SeatView Admin</span>
+        </a>
+        <p class="eyebrow">Admin Login</p>
+        <h1>后台登录</h1>
+        <p class="login-copy">请输入管理员密码。前台用户无需登录，只有后台管理和数据保存需要验证。</p>
+        <form id="loginForm" class="login-form">
+          <label>
+            管理员密码
+            <input name="password" type="password" autocomplete="current-password" placeholder="请输入密码" required />
+          </label>
+          <button class="primary-wide" type="submit">登录后台</button>
+          <p class="login-message" id="loginMessage" role="status"></p>
+        </form>
+      </section>
+    </main>
+
+    <script>
+      const form = document.querySelector("#loginForm");
+      const message = document.querySelector("#loginMessage");
+
+      async function checkAuth() {
+        const response = await fetch("/api/auth");
+        const data = await response.json();
+        if (data.authenticated) window.location.href = "/admin.html";
+      }
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        message.textContent = "正在登录...";
+        const password = new FormData(form).get("password");
+        const response = await fetch("/api/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ password })
+        });
+        if (!response.ok) {
+          message.textContent = "密码不正确，请重试。";
+          return;
+        }
+        window.location.href = "/admin.html";
+      });
+
+      checkAuth();
+    </script>
+  </body>
+</html>

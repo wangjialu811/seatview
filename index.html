@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SeatView | 演唱会座区决策助手</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="#home" aria-label="SeatView 首页">
+        <span class="brand-mark">SV</span>
+        <span>SeatView</span>
+      </a>
+      <nav class="nav-links" aria-label="主导航">
+        <a href="#venues">场馆</a>
+        <a href="#viewer">视角查询</a>
+        <a href="#updates">最近更新</a>
+      </nav>
+      <button class="ghost-button" id="submitReviewButton" type="button">投稿预留</button>
+    </header>
+
+    <main>
+      <section class="hero" id="home">
+        <div class="hero-sand hero-sand-one"></div>
+        <div class="hero-sand hero-sand-two"></div>
+        <div class="hero-glow"></div>
+        <div class="hero-overlay"></div>
+        <div class="hero-content">
+          <p class="eyebrow">演唱会座区决策助手</p>
+          <h1>SeatView</h1>
+          <p class="hero-copy">购票前搜索场馆，查看座位图、座区标签和真实视角卡片，快速判断哪个区域更值得买。</p>
+          <div class="search-panel" role="search">
+            <label for="searchInput">搜索场馆或城市</label>
+            <div class="search-row">
+              <input id="searchInput" type="search" placeholder="输入北京、上海、南京、鸟巢..." />
+              <button id="searchButton" type="button">查询</button>
+            </div>
+            <div class="quick-tags" aria-label="快捷筛选">
+              <button type="button" data-query="北京">北京</button>
+              <button type="button" data-query="上海">上海</button>
+              <button type="button" data-query="南京">南京</button>
+              <button type="button" data-query="成都">成都</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="metrics-band" aria-label="产品数据概览">
+        <div><strong id="venueCount">20</strong><span>热门场馆</span></div>
+        <div><strong id="seatMapCount">0</strong><span>座位图</span></div>
+        <div><strong id="sectionCount">0</strong><span>座区</span></div>
+        <div><strong id="recordCount">0</strong><span>已发布视角</span></div>
+      </section>
+
+      <section class="section">
+        <div class="section-heading">
+          <p class="eyebrow">Cities</p>
+          <h2>热门城市</h2>
+          <p>从高频演唱会城市开始收录，优先覆盖用户购票前最常搜索的场馆。</p>
+        </div>
+        <div class="city-grid" id="hotCityGrid"></div>
+      </section>
+
+      <section class="section" id="venues">
+        <div class="section-heading">
+          <p class="eyebrow">Venue Search</p>
+          <h2 id="venueSectionTitle">热门场馆</h2>
+          <p id="venueResultSummary">场馆、座位图、座区和视角内容均由后台维护；已发布内容会自动展示到前台。</p>
+        </div>
+        <div class="venue-grid" id="venueGrid"></div>
+      </section>
+
+      <section class="workspace" id="viewer">
+        <div class="viewer-header">
+          <div>
+            <p class="eyebrow">Venue Detail</p>
+            <h2 id="selectedVenueName">场馆详情</h2>
+            <p id="selectedVenueMeta">选择一个场馆后查看座位图和视角记录。</p>
+          </div>
+        </div>
+
+        <div class="viewer-layout">
+          <section class="seat-map-panel" aria-labelledby="seatMapTitle">
+            <div class="panel-title">
+              <h3 id="seatMapTitle">座位图</h3>
+              <div class="zoom-controls">
+                <button id="zoomOut" type="button" aria-label="缩小">-</button>
+                <span id="zoomValue">100%</span>
+                <button id="zoomIn" type="button" aria-label="放大">+</button>
+              </div>
+            </div>
+            <div class="seat-map-shell">
+              <div class="seat-map" id="seatMap" aria-label="可点击座位图"></div>
+            </div>
+          </section>
+
+          <aside class="section-detail" aria-live="polite">
+            <div class="detail-cover">
+              <img id="detailCoverImage" src="assets/concert-seatview-hero.png" alt="视角内容封面" />
+            </div>
+            <div class="detail-content">
+            <p class="eyebrow" id="detailSectionLevel">座区详情</p>
+              <h3 id="detailSectionName">暂无座区数据</h3>
+              <p id="detailReview">后台录入视角记录后，这里会展示座区、排数、评价、标签和来源链接。</p>
+              <div class="record-filter" role="search">
+                <label>搜索该场馆视角</label>
+                <div class="record-filter-row">
+                  <input id="sectionSearchInput" type="search" placeholder="座区（必填）" aria-label="座区，必填" />
+                  <input id="rowSearchInput" type="search" placeholder="排数（可选）" aria-label="排数，可选" />
+                  <input id="seatSearchInput" type="search" placeholder="座位号（可选）" aria-label="座位号，可选" />
+                  <button id="recordSearchButton" type="button">筛选</button>
+                  <button id="recordShowAllButton" type="button">全部</button>
+                </div>
+              </div>
+              <div class="score-ring" id="scoreRing">
+                <strong id="detailRating">暂无</strong>
+                <span>评分</span>
+              </div>
+              <div class="tag-list" id="tagList"></div>
+              <div class="record-list" id="frontRecordList"></div>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <section class="section" id="updates">
+        <div class="section-heading">
+          <p class="eyebrow">Recent</p>
+          <h2>最近更新</h2>
+          <p>后台新增或修改视角记录后，会在这里形成最新内容入口。</p>
+        </div>
+        <div class="review-grid" id="recentUpdateGrid"></div>
+      </section>
+
+      <section class="section">
+        <div class="section-heading">
+          <p class="eyebrow">Why SeatView</p>
+          <h2>不是看图，而是帮你做座区决策</h2>
+          <p>SeatView 将公开来源整理为“场馆 - 座区 - 视角 - 标签”的结构化数据。图片用于参考，标签和评价帮助用户更快判断距离、遮挡、屏幕和拍摄体验。</p>
+        </div>
+        <div class="review-grid" id="reviewGrid"></div>
+      </section>
+    </main>
+
+    <dialog class="review-dialog" id="reviewDialog">
+      <form method="dialog">
+        <div class="dialog-header">
+          <h2>用户投稿预留</h2>
+          <button type="submit" aria-label="关闭">×</button>
+        </div>
+        <p class="admin-note">MVP 阶段暂不开放用户投稿。后续版本会支持用户上传视角图片和评价，并进入后台审核。</p>
+        <button class="primary-wide" type="submit">知道了</button>
+      </form>
+    </dialog>
+
+    <script src="app.js"></script>
+  </body>
+</html>
