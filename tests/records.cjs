@@ -1,0 +1,38 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+const ai = require('../services/aiService');
+
+(async () => {
+  process.env.AI_MODE = 'mock';
+  assert.equal((await ai.extract('552区第15排，无遮挡', [])).data.row, '15排');
+  assert.equal((await ai.extract('552区，无遮挡', [])).data.row, null);
+  const fields = Object.fromEntries(['recordId','venueId','sectionName','row','seatNo','publishedAt','sourcePlatform','sourceUrl','status','reviewText','stageDistance','viewingAngle','obstruction','shootingFriendly','image'].map(k => [k, {value:''}]));
+  const preview = {hidden:true, removeAttribute(k){delete this[k];}};
+  let submit;
+  const form = {elements:fields, querySelector(selector){return fields[selector.match(/name="(.*?)"/)[1]];}, addEventListener(type, fn){if(type==='submit')submit=fn;}, scrollIntoView(){}, reset(){for(const [k,f] of Object.entries(fields))if(k!=='recordId')f.value='';}};
+  const document = {querySelector(selector){return selector==='#recordForm'?form:selector==='#recordImagePreview'?preview:null;},querySelectorAll(){return [];}};
+  const context = vm.createContext({document, console, location:{search:''}, FormData:class{get(k){return fields[k]?.value;}}, URLSearchParams});
+  vm.runInContext(fs.readFileSync('app.js','utf8').replace(/boot\(\);\s*$/, ''), context);
+  vm.runInContext(`venues=[{id:'v',name:'场馆'}]; sections=[{id:'s',venueId:'v',name:'552区'}]; viewRecords=[{id:'r',venueId:'v',sectionId:'s',row:'15排',imageUrl:'data:image/png;base64,AAAA',reviewText:'原评价',sourcePlatform:'来源',status:'已发布'}]; setFormTags=()=>{}; selectedFormTags=()=>['无遮挡']; saveState=async()=>{}; renderAll=()=>{}; bindForms(); fillRecordForm('r');`, context);
+  assert.equal(preview.hidden, false);
+  assert.equal(preview.src, 'data:image/png;base64,AAAA');
+  fields.reviewText.value = '修改后的评价';
+  await submit({preventDefault(){},currentTarget:form});
+  assert.equal(fields.recordId.value, '');
+  assert.equal(vm.runInContext('viewRecords.length',context), 1);
+  assert.equal(vm.runInContext('sectionRecords("s").length',context), 1);
+  vm.runInContext('fillRecordForm("r")',context);
+  assert.equal(fields.reviewText.value, '修改后的评价');
+  assert.equal(fields.row.value, '15排');
+  assert.equal(preview.src, 'data:image/png;base64,AAAA');
+  vm.runInContext(`fileToDataUrl=async()=> 'data:image/png;base64,BBBB'`,context);
+  await submit({preventDefault(){},currentTarget:form});
+  vm.runInContext('fillRecordForm("r")',context);
+  assert.equal(preview.src, 'data:image/png;base64,BBBB');
+  assert.equal(vm.runInContext('viewRecords[0].image',context), preview.src);
+  assert.equal(vm.runInContext('sectionRecords("s").length',context), 1);
+  assert.ok(!fs.readFileSync('admin.html','utf8').includes('name="artist"'));
+  assert.ok(!fs.readFileSync('admin.html','utf8').includes('name="eventName"'));
+  console.log('PASS: row extraction, editing and reopening, image retention and replacement, published visibility, edit ID reset, removed fields.');
+})().catch(error=>{console.error(error);process.exitCode=1;});

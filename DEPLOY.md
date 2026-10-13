@@ -1,5 +1,13 @@
 # SeatView 部署说明
 
+## 手机公网访问（临时演示）
+
+在项目目录运行 `./Start-Mobile.ps1`，脚本会启动网站、前台网关和 Cloudflare 通道，并输出 HTTPS 访问地址。也会将地址保存至 `.runtime/mobile-url.txt`。
+
+手机在 Wi-Fi 或移动网络下均可打开该地址。公网入口只开放前台浏览、已发布数据和选座推荐；后台继续使用电脑上的 `http://127.0.0.1:5178/admin.html`。后台更新的已发布数据会在手机刷新后同步。
+
+电脑需要保持开机、联网且不休眠。通道关闭后地址失效，重新启动会生成新地址。此方式用于演示；若需要固定网址和电脑关机后仍可访问，应按下文部署完整 Node.js 服务并配置持久数据目录。
+
 ## 当前项目结构
 
 SeatView 现在是一个 Node.js 网站：
@@ -97,3 +105,9 @@ npm start
 - 数据库：PostgreSQL / MySQL / SQLite
 - 图片存储：阿里云 OSS / 腾讯云 COS / Cloudflare R2
 - 后台账号：多管理员账号和权限
+
+## AI MVP增量配置
+
+现在启动会自动读取项目根目录 `.env`。复制 `.env.example`，配置 `OPENAI_API_KEY`、`OPENAI_BASE_URL`、`OPENAI_MODEL` 和 `AI_MODE`。无Key自动Mock，`AI_MODE=mock`强制离线演示。API和Prompt分别在 `services/aiService.js` 与 `services/prompts.js`。前后端同一Node进程，仍使用 `npm start`，详细演示步骤见README.md。
+
+OpenRouter配置见README.md：OPENROUTER_*字段优先，可沿用OPENAI_API_KEY；真实Key仅放.env，不能放.env.example。修改后重启服务。

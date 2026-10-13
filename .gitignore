@@ -1,8 +1,10 @@
 .env
+.env.*
+!.env.example
 node_modules/
+.test-data/
 *.log
-server.out.log
-server.err.log
-server.log
 .DS_Store
 Thumbs.db
+.runtime/
+api.txt

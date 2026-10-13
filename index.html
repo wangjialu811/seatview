@@ -6,21 +6,22 @@
     <title>SeatView | 演唱会座区决策助手</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
-  <body>
+  <body class="front-page">
     <header class="topbar">
-      <a class="brand" href="#home" aria-label="SeatView 首页">
+      <a class="brand" href="/" data-home-link aria-label="SeatView 首页">
         <span class="brand-mark">SV</span>
         <span>SeatView</span>
       </a>
       <nav class="nav-links" aria-label="主导航">
-        <a href="#venues">场馆</a>
-        <a href="#viewer">视角查询</a>
-        <a href="#updates">最近更新</a>
+        <a href="#venues" data-home-link>场馆</a>
+        <a href="#home" data-home-link>搜索视角</a>
+        <a href="#updates" data-home-link>最近更新</a>
       </nav>
       <button class="ghost-button" id="submitReviewButton" type="button">投稿预留</button>
     </header>
 
     <main>
+      <div id="homeContent">
       <section class="hero" id="home">
         <div class="hero-sand hero-sand-one"></div>
         <div class="hero-sand hero-sand-two"></div>
@@ -28,14 +29,15 @@
         <div class="hero-overlay"></div>
         <div class="hero-content">
           <p class="eyebrow">演唱会座区决策助手</p>
-          <h1>SeatView</h1>
-          <p class="hero-copy">购票前搜索场馆，查看座位图、座区标签和真实视角卡片，快速判断哪个区域更值得买。</p>
-          <div class="search-panel" role="search">
+          <h1>买票前，先看见。</h1>
+          <p class="hero-copy">找到场馆，查看座区视角，让 AI 帮你选座。</p>
+          <p id="routeNotice" class="demo-note" role="status" hidden></p><div class="search-panel" role="search">
             <label for="searchInput">搜索场馆或城市</label>
             <div class="search-row">
-              <input id="searchInput" type="search" placeholder="输入北京、上海、南京、鸟巢..." />
+              <input id="searchInput" type="search" placeholder="搜索城市或场馆，如北京、鸟巢、南京奥体" autocomplete="off" aria-controls="searchResults" />
               <button id="searchButton" type="button">查询</button>
             </div>
+            <section id="searchResults" class="search-results" aria-labelledby="searchResultsTitle" hidden><div class="search-result-heading"><h2 id="searchResultsTitle">搜索结果</h2><button type="button" id="clearSearch" class="text-button">清空</button></div><p id="searchResultCount" role="status"></p><div id="searchResultList"></div><button type="button" id="showAllSearchResults" class="text-button" hidden>查看全部结果</button></section>
             <div class="quick-tags" aria-label="快捷筛选">
               <button type="button" data-query="北京">北京</button>
               <button type="button" data-query="上海">上海</button>
@@ -46,82 +48,29 @@
         </div>
       </section>
 
+      <section class="section" id="hotCities">
+        <div class="section-heading">
+          <p class="eyebrow">Cities</p>
+          <h2>热门城市</h2>
+          <p>选一个城市，马上查看场馆。</p>
+        </div>
+        <div class="city-grid" id="hotCityGrid"></div>
+      </section>
+
+            <section class="section" id="venues">
+        <div class="section-heading">
+          <p class="eyebrow">Venue Search</p>
+          <h2 id="venueSectionTitle">热门场馆</h2>
+          <p id="venueResultSummary">从熟悉的场馆，开始你的观演计划。</p>
+        </div>
+        <div class="venue-grid" id="venueGrid"></div><button type="button" id="showMoreVenues" class="text-button" hidden>展开更多场馆 ↓</button>
+      </section>
+
       <section class="metrics-band" aria-label="产品数据概览">
         <div><strong id="venueCount">20</strong><span>热门场馆</span></div>
         <div><strong id="seatMapCount">0</strong><span>座位图</span></div>
         <div><strong id="sectionCount">0</strong><span>座区</span></div>
         <div><strong id="recordCount">0</strong><span>已发布视角</span></div>
-      </section>
-
-      <section class="section">
-        <div class="section-heading">
-          <p class="eyebrow">Cities</p>
-          <h2>热门城市</h2>
-          <p>从高频演唱会城市开始收录，优先覆盖用户购票前最常搜索的场馆。</p>
-        </div>
-        <div class="city-grid" id="hotCityGrid"></div>
-      </section>
-
-      <section class="section" id="venues">
-        <div class="section-heading">
-          <p class="eyebrow">Venue Search</p>
-          <h2 id="venueSectionTitle">热门场馆</h2>
-          <p id="venueResultSummary">场馆、座位图、座区和视角内容均由后台维护；已发布内容会自动展示到前台。</p>
-        </div>
-        <div class="venue-grid" id="venueGrid"></div>
-      </section>
-
-      <section class="workspace" id="viewer">
-        <div class="viewer-header">
-          <div>
-            <p class="eyebrow">Venue Detail</p>
-            <h2 id="selectedVenueName">场馆详情</h2>
-            <p id="selectedVenueMeta">选择一个场馆后查看座位图和视角记录。</p>
-          </div>
-        </div>
-
-        <div class="viewer-layout">
-          <section class="seat-map-panel" aria-labelledby="seatMapTitle">
-            <div class="panel-title">
-              <h3 id="seatMapTitle">座位图</h3>
-              <div class="zoom-controls">
-                <button id="zoomOut" type="button" aria-label="缩小">-</button>
-                <span id="zoomValue">100%</span>
-                <button id="zoomIn" type="button" aria-label="放大">+</button>
-              </div>
-            </div>
-            <div class="seat-map-shell">
-              <div class="seat-map" id="seatMap" aria-label="可点击座位图"></div>
-            </div>
-          </section>
-
-          <aside class="section-detail" aria-live="polite">
-            <div class="detail-cover">
-              <img id="detailCoverImage" src="assets/concert-seatview-hero.png" alt="视角内容封面" />
-            </div>
-            <div class="detail-content">
-            <p class="eyebrow" id="detailSectionLevel">座区详情</p>
-              <h3 id="detailSectionName">暂无座区数据</h3>
-              <p id="detailReview">后台录入视角记录后，这里会展示座区、排数、评价、标签和来源链接。</p>
-              <div class="record-filter" role="search">
-                <label>搜索该场馆视角</label>
-                <div class="record-filter-row">
-                  <input id="sectionSearchInput" type="search" placeholder="座区（必填）" aria-label="座区，必填" />
-                  <input id="rowSearchInput" type="search" placeholder="排数（可选）" aria-label="排数，可选" />
-                  <input id="seatSearchInput" type="search" placeholder="座位号（可选）" aria-label="座位号，可选" />
-                  <button id="recordSearchButton" type="button">筛选</button>
-                  <button id="recordShowAllButton" type="button">全部</button>
-                </div>
-              </div>
-              <div class="score-ring" id="scoreRing">
-                <strong id="detailRating">暂无</strong>
-                <span>评分</span>
-              </div>
-              <div class="tag-list" id="tagList"></div>
-              <div class="record-list" id="frontRecordList"></div>
-            </div>
-          </aside>
-        </div>
       </section>
 
       <section class="section" id="updates">
@@ -141,6 +90,69 @@
         </div>
         <div class="review-grid" id="reviewGrid"></div>
       </section>
+      </div>
+      <section class="workspace" id="viewer" hidden tabindex="-1">
+        <button class="ghost-button back-home" id="backToHome" type="button">← 返回搜索场馆</button>
+        <div class="viewer-header">
+          <div>
+            <p class="eyebrow">Venue Detail</p>
+            <h2 id="selectedVenueName">场馆详情</h2>
+            <p id="selectedVenueMeta">选择一个场馆后查看座位图和视角记录。</p><p id="selectedVenueDescription"></p>
+          </div>
+          <button class="primary-wide ai-entry" id="openAiAssistant" type="button" aria-controls="aiAssistantBox">AI 帮我选座 ↗</button>
+        </div>
+
+        <p class="demo-note">当前为产品 Demo，部分场馆数据为示例数据。座区按钮用于切换记录，不代表精确地图坐标。</p>
+        <div class="viewer-layout">
+          <section class="seat-map-panel" aria-labelledby="seatMapTitle">
+            <div class="panel-title">
+              <h3 id="seatMapTitle">座位图</h3>
+              <div class="zoom-controls">
+                <button id="zoomOut" type="button" aria-label="缩小">-</button>
+                <span id="zoomValue">100%</span>
+                <button id="zoomIn" type="button" aria-label="放大">+</button>
+              </div>
+            </div>
+            <div class="seat-map-layout">
+              <aside class="seat-section-sidebar" aria-label="选择座区"><h4>选择座区</h4><div id="seatSectionPicker"></div></aside>
+            <div class="seat-map-shell">
+              <div class="seat-map" id="seatMap" aria-label="可点击座位图"></div>
+            </div>
+            </div>
+          </section>
+
+        <section class="ai-box" id="aiAssistantBox"><p class="eyebrow">AI 座区助手</p><h3>告诉我，你想怎么看？</h3><p id="assistantVenue"></p><form id="recommendForm"><label for="recommendText">你的观演偏好和拍摄需求</label><textarea id="recommendText" maxlength="5000" placeholder="想离延伸台近一点，主要想拍直拍，希望无遮挡。"></textarea><button class="primary-wide" type="submit">帮我选座</button></form><p id="recommendStatus" role="status"></p><a id="viewRecommendation" href="#recommendationSection" hidden>查看推荐结果 ↓</a></section>
+
+        </div>
+          <section class="section-detail" id="sectionViews" aria-live="polite">
+            <div class="detail-cover">
+              <img id="detailCoverImage" src="assets/concert-seatview-hero.png" alt="视角内容封面" />
+            </div>
+            <div class="detail-content">
+            <p class="eyebrow" id="detailSectionLevel">座区详情</p>
+              <h3 id="detailSectionName">暂无座区数据</h3>
+              <p id="detailReview">后台录入视角记录后，这里会展示座区、排数、评价、标签和来源链接。</p>
+              <div class="record-filter" role="search">
+                <label>搜索该场馆视角</label>
+                <div class="record-filter-row">
+                  <input id="sectionSearchInput" type="search" placeholder="座区（必填）" aria-label="座区，必填" />
+                  <input id="rowSearchInput" type="search" placeholder="排数（可选）" aria-label="排数，可选" />
+                  <input id="seatSearchInput" type="search" placeholder="座位号（可选）" aria-label="座位号，可选" />
+                  <button id="recordSearchButton" type="button">筛选</button>
+                  <button id="recordShowAllButton" type="button">全部</button>
+                </div>
+              </div>
+              <div class="score-ring" id="scoreRing">
+                <strong id="detailRating">暂无</strong>
+                <span>标签概览</span>
+              </div>
+              <div class="tag-list" id="tagList"></div>
+              <div class="record-list" id="frontRecordList"></div>
+            </div>
+          </section>
+        <section id="recommendationSection" class="recommendation-section" hidden tabindex="-1"><p class="eyebrow">Your picks</p><h3>为你推荐的座区</h3><div id="recommendResult" aria-live="polite"></div></section>
+      </section>
+
     </main>
 
     <dialog class="review-dialog" id="reviewDialog">
@@ -154,6 +166,6 @@
       </form>
     </dialog>
 
-    <script src="app.js"></script>
+    <script src="assets/venue-search.js"></script><script src="app.js"></script><script src="ai-ui.js"></script>
   </body>
 </html>

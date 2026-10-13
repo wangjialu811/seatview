@@ -43,7 +43,12 @@ let selectedVenueId = venues[0].id;
 let selectedSectionId = null;
 let zoom = 1;
 let recordFilter = { section: "", row: "", seat: "" };
-let showAllVenueRecords = false;
+let showAllVenueRecords = true;
+let searchTimer;
+let searchExpanded = false;
+let hotVenuesExpanded = false;
+let searchQuery = '';
+let recommendationEpoch = 0;
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -68,7 +73,8 @@ function fileToDataUrl(file) {
 
 async function loadServerState() {
   try {
-    const response = await fetch("/api/state");
+    let response = await fetch(isFrontPage ? "/api/public-state" : "/api/state");
+    if (isFrontPage && response.status === 404) response = await fetch("/api/state");
     if (!response.ok) return;
     const saved = await response.json();
     if (Array.isArray(saved.venues) && saved.venues.length) venues = saved.venues;
@@ -76,7 +82,7 @@ async function loadServerState() {
     if (Array.isArray(saved.sections)) sections = saved.sections;
     if (Array.isArray(saved.viewRecords)) viewRecords = saved.viewRecords;
     if (Array.isArray(saved.xhsDrafts)) xhsDrafts = saved.xhsDrafts;
-    selectedVenueId = venues[0]?.id || selectedVenueId;
+    selectedVenueId = venues.some(v=>v.id===new URLSearchParams(location.search).get('venue')) ? new URLSearchParams(location.search).get('venue') : selectedVenueId;
   } catch (error) {
     console.warn("SeatView database could not be loaded.", error);
   }
@@ -98,6 +104,8 @@ async function saveState() {
   } catch (error) {
     alert("保存到项目数据库失败：请确认是通过 server.js 启动的网站。");
     console.warn("SeatView database could not be saved.", error);
+    await loadServerState();
+    renderAll();
   }
 }
 
@@ -135,8 +143,8 @@ function ensureSelectedSection() {
 function setFormTags(tags = []) {
   const wrap = $("#tagCheckboxes");
   if (!wrap) return;
-  wrap.innerHTML = availableTags.map((tag) => `
-    <label class="tag-check"><input type="checkbox" name="tags" value="${tag}" ${tags.includes(tag) ? "checked" : ""} /> ${tag}</label>
+  wrap.innerHTML = [...new Set([...availableTags, ...tags])].map((tag) => `
+    <label class="tag-check"><input type="checkbox" name="tags" value="${escapeHtml(tag)}" ${tags.includes(tag) ? "checked" : ""} /> ${escapeHtml(tag)}</label>
   `).join("");
 }
 
@@ -161,12 +169,12 @@ function renderVenueOptions() {
   if (!isAdminPage) return;
   $$(".venue-select, #recordVenueSelect").forEach((select) => {
     const value = select.value || selectedVenueId;
-    select.innerHTML = venues.map((venue) => `<option value="${venue.id}">${venue.city} · ${venue.name}</option>`).join("");
+    select.innerHTML = venues.map((venue) => `<option value="${escapeHtml(venue.id)}">${escapeHtml(venue.city)} · ${escapeHtml(venue.name)}</option>`).join("");
     select.value = venues.some((venue) => venue.id === value) ? value : selectedVenueId;
   });
 }
 
-function renderVenues(list = visibleVenues()) {
+function renderVenues(list = visibleVenues().filter(venue => venue.isHot !== false)) {
   const venueGrid = $("#venueGrid");
   if (!venueGrid) return;
   venueGrid.innerHTML = "";
@@ -175,38 +183,27 @@ function renderVenues(list = visibleVenues()) {
     return;
   }
 
-  list.forEach((venue) => {
+  const ordered = [...list].sort((a, b) => venueSections(b.id).length - venueSections(a.id).length);
+  if ($('#showMoreVenues')) { $('#showMoreVenues').hidden = ordered.length <= 6; $('#showMoreVenues').textContent = hotVenuesExpanded ? '收起场馆 ↑' : '展开更多场馆 ↓'; }
+  (hotVenuesExpanded ? ordered : ordered.slice(0, 6)).forEach((venue) => {
     const button = document.createElement("button");
     const mapCount = venueSeatMaps(venue.id).length;
     const sectionCount = venueSections(venue.id).length;
     button.type = "button";
-    button.className = `venue-card ${venue.id === selectedVenueId ? "active" : ""}`;
+    button.className = "venue-card";
     button.innerHTML = `
-      <p class="eyebrow">${venue.city} · ${venue.type}</p>
-      <h3>${venue.name}</h3>
-      <p>${venue.description || venueDescription}</p>
+      <p class="eyebrow">${escapeHtml(venue.city)} · ${escapeHtml(venue.type)}</p>
+      <h3>${escapeHtml(venue.name)}</h3>
+      <p>${mapCount ? "座位图已收录" : "座位图待补充"} · ${sectionCount ? `${sectionCount} 个座区可查看` : "视角待补充"}</p>
       <div class="mini-meta">
-        <span>容量：${venue.capacity || "待核验"}</span>
-        <span>座位图：${mapCount ? `${mapCount} 张` : "待上传"}</span>
-        <span>座区：${sectionCount ? `${sectionCount} 个` : "待维护"}</span>
+        <span>查看座位图与 AI 推荐 →</span>
+
+
       </div>
     `;
     button.addEventListener("click", () => selectVenue(venue.id));
     venueGrid.appendChild(button);
   });
-}
-
-function updateVenueResultSummary(query, count) {
-  const title = $("#venueSectionTitle");
-  const summary = $("#venueResultSummary");
-  if (!title || !summary) return;
-  if (query) {
-    title.textContent = "搜索结果";
-    summary.textContent = `找到 ${count} 个与“${query}”相关的场馆。`;
-  } else {
-    title.textContent = "热门场馆";
-    summary.textContent = "场馆、座位图、座区和视角内容均由后台维护；已发布内容会自动展示到前台。";
-  }
 }
 
 function renderHotCities() {
@@ -224,6 +221,8 @@ function renderHotCities() {
       const input = $("#searchInput");
       if (input) input.value = button.dataset.cityQuery;
       search();
+      $("#searchInput")?.scrollIntoView({ block: "center", behavior: "instant" });
+      $("#searchInput")?.focus({ preventScroll: true });
     });
   });
 }
@@ -231,32 +230,97 @@ function renderHotCities() {
 function renderRecentUpdates() {
   const wrap = $("#recentUpdateGrid");
   if (!wrap) return;
-  const latest = viewRecords.slice(-4).reverse();
+  const latest = viewRecords.filter(r=>r.status === "已发布").slice(-4).reverse();
   wrap.innerHTML = latest.length ? latest.map((record) => {
     const venue = venues.find((item) => item.id === record.venueId);
     const section = sections.find((item) => item.id === record.sectionId);
-    return `<article class="review-card"><h3>${venue?.name || "未知场馆"}</h3><p>${section?.name || "未知座区"} · ${record.row || "排数待补充"} · ${record.status}</p></article>`;
+    return `<article class="review-card"><h3>${escapeHtml(venue?.name || "未知场馆")}</h3><p>${escapeHtml(section?.name || "未知座区")} · ${escapeHtml(record.row || "排数待补充")} · ${escapeHtml(record.status)}</p></article>`;
   }).join("") : `<article class="empty-state"><h3>暂无最近更新</h3><p>后台录入视角记录后，这里会自动展示。</p></article>`;
 }
 
-function selectVenue(id) {
+function selectVenue(id, { historyMode = 'push', scroll = true } = {}) {
+  const venue = visibleVenues().find(item => item.id === id);
+  if (!venue) { showHome({ historyMode: 'replace' }); return; }
+  clearTimeout(searchTimer);
+  resetAssistant();
   selectedVenueId = id;
   selectedSectionId = venueSections(id)[0]?.id || null;
-  recordFilter = { section: "", row: "", seat: "" };
-  showAllVenueRecords = false;
+  recordFilter = { section: '', row: '', seat: '' };
+  showAllVenueRecords = true;
+  zoom = 1;
+  if ($('#zoomValue')) $('#zoomValue').textContent = '100%';
+  if (isFrontPage) {
+    const state = { query: $('#searchInput').value, expanded: searchExpanded };
+    if (historyMode !== 'none') {
+      if (historyMode === 'push') history.replaceState(state, '', location.href);
+      history[historyMode === 'replace' ? 'replaceState' : 'pushState'](state, '', '/?venue=' + encodeURIComponent(id) + '#viewer');
+    }
+    $('#homeContent').hidden = true;
+    $('#viewer').hidden = false;
+    document.body.classList.add('detail-view');
+    document.title = venue.name + ' | SeatView';
+  }
   renderAll();
-  $("#viewer")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  if (scroll) { window.scrollTo({ top: 0, behavior: 'instant' }); $('#viewer')?.focus({ preventScroll: true }); }
+}
+
+function showHome({ historyMode = 'push', hash = '#home', focus = true } = {}) {
+  if (!isFrontPage) return;
+  clearTimeout(searchTimer);
+  resetAssistant();
+  $('#homeContent').hidden = false;
+  $('#viewer').hidden = true;
+  document.body.classList.remove('detail-view');
+  document.title = 'SeatView | 演唱会座区决策助手';
+  if (historyMode !== 'none') history[historyMode === 'replace' ? 'replaceState' : 'pushState']({ query: $('#searchInput').value, expanded: searchExpanded }, '', '/' + hash);
+  search({ keepExpanded: true });
+  if (focus) { window.scrollTo({ top: 0, behavior: 'instant' }); $('#searchInput').focus({ preventScroll: true }); }
+}
+
+function restoreFrontRoute({ initial = false } = {}) {
+  if (!isFrontPage) return;
+  const id = new URLSearchParams(location.search).get('venue');
+  if (history.state?.query !== undefined) $('#searchInput').value = history.state.query;
+  searchExpanded = Boolean(history.state?.expanded);
+  if (id && visibleVenues().some(v => v.id === id)) {
+    if (initial || $('#viewer').hidden || selectedVenueId !== id) selectVenue(id, { historyMode: 'none', scroll: true });
+  } else if (!id && location.hash === '#viewer' && currentVenue()) {
+    selectVenue(selectedVenueId, { historyMode: 'replace' });
+  } else {
+    showHome({ historyMode: 'none', focus: !initial });
+    if (id) { $('#routeNotice').hidden = false; $('#routeNotice').textContent = '该场馆不存在或已下架，请重新搜索。'; }
+  }
 }
 
 function renderSeatMap() {
   const seatMap = $("#seatMap");
+  const sectionPicker = $("#seatSectionPicker");
   if (!seatMap) return;
+  if (sectionPicker) sectionPicker.replaceChildren();
   const venue = currentVenue();
+  if (!venue) { seatMap.innerHTML="<p>暂无场馆，请在后台新增场馆。</p>"; return; }
   const map = defaultSeatMap(venue.id);
   const sectionList = venueSections(venue.id);
   $("#selectedVenueName").textContent = venue.name;
-  $("#selectedVenueMeta").textContent = `${venue.city} · ${venue.type} · 容量 ${venue.capacity || "待核验"} · ${map ? map.name : "座位图待上传"}`;
+  if ($("#selectedVenueDescription")) $("#selectedVenueDescription").textContent = venue.description || venueDescription;
+  $("#selectedVenueMeta").textContent = `${venue.city} · ${venue.type} · ${map ? map.name : "座位图待补充"}`;
   seatMap.style.transform = `scale(${zoom})`;
+
+  sectionList.forEach((section) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `section-button ${section.id === selectedSectionId ? "active" : ""}`;
+    button.setAttribute("aria-pressed", String(section.id === selectedSectionId));
+    button.textContent = section.name;
+    button.addEventListener("click", () => {
+      selectedSectionId = section.id;
+      showAllVenueRecords = false;
+      recordFilter = { section: "", row: "", seat: "" };
+      renderSeatMap();
+      renderDetail();
+    });
+    sectionPicker?.appendChild(button);
+  });
 
   if (!map) {
     seatMap.innerHTML = `
@@ -270,27 +334,13 @@ function renderSeatMap() {
   }
 
   seatMap.innerHTML = `<img class="seat-map-image" src="${map.url}" alt="${map.name}" />`;
-  sectionList.forEach((section, index) => {
-    const button = document.createElement("button");
-    const left = 80 + (index % 4) * 145;
-    const top = 95 + Math.floor(index / 4) * 100;
-    button.type = "button";
-    button.className = `section-button ${section.id === selectedSectionId ? "active" : ""}`;
-    button.style.cssText = `left: ${left}px; top: ${top}px; width: 116px; height: 68px;`;
-    button.textContent = section.name;
-    button.addEventListener("click", () => {
-      selectedSectionId = section.id;
-      renderSeatMap();
-      renderDetail();
-    });
-    seatMap.appendChild(button);
-  });
 }
 
 function renderDetail() {
   const detailSectionName = $("#detailSectionName");
   if (!detailSectionName) return;
   const venue = currentVenue();
+  if (!venue) return;
   const section = sections.find((item) => item.id === selectedSectionId);
   const venueRecords = viewRecords.filter((record) => record.venueId === venue.id && record.status === "已发布");
   const filteredVenueRecords = getFilteredVenueRecords(venueRecords);
@@ -320,7 +370,7 @@ function renderDetail() {
     ? (hasRecordFilter ? `共找到 ${records.length} 条匹配视角。` : firstRecord.reviewText || "暂无文字评价")
     : (hasRecordFilter ? "没有找到匹配的已发布视角记录。" : allSectionRecords.length ? "该座区已有视角记录，但状态还不是“已发布”，所以暂不展示给前台用户。" : "该座区暂无视角记录。");
   $("#detailRating").textContent = firstRecord?.tags?.length ? `${firstRecord.tags.length} 标签` : "暂无";
-  $("#tagList").innerHTML = firstRecord?.tags?.length ? firstRecord.tags.map((tag) => `<span>${tag}</span>`).join("") : "";
+  $("#tagList").innerHTML = firstRecord?.tags?.length ? firstRecord.tags.map((tag) => `<span>${escapeHtml(tag)}</span>`).join("") : "";
   $("#frontRecordList").innerHTML = records.length ? records.map(renderFrontRecordCard).join("") : `<article class="front-record"><p>暂无已发布视角记录。</p></article>`;
 }
 
@@ -331,9 +381,9 @@ function getFilteredVenueRecords(records) {
   if (!sectionQuery && !rowQuery && !seatQuery) return records;
   return records.filter((record) => {
     const section = sections.find((item) => item.id === record.sectionId);
-    const sectionText = `${section?.name || ""}`.toLowerCase();
-    const rowText = `${record.row || ""}`.toLowerCase();
-    const seatText = `${record.seatNo || ""}`.toLowerCase();
+    const sectionText = `${escapeHtml(section?.name || "")}`.toLowerCase();
+    const rowText = `${escapeHtml(record.row || "")}`.toLowerCase();
+    const seatText = `${escapeHtml(record.seatNo || "")}`.toLowerCase();
     return sectionText.includes(sectionQuery)
       && (!rowQuery || rowText.includes(rowQuery))
       && (!seatQuery || seatText.includes(seatQuery));
@@ -344,16 +394,27 @@ function hasActiveRecordFilter() {
   return !!(recordFilter.section.trim() || recordFilter.row.trim() || recordFilter.seat.trim());
 }
 
+function safeUrl(value) { return /^(https?:\/\/|data:image\/(png|jpeg|webp);base64,|assets\/|\/api\/media\/)/.test(value || '') ? value : ''; }
+function escapeHtml(value) { return String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function resetAssistant() {
+  recommendationEpoch++;
+  if ($('#recommendResult')) $('#recommendResult').replaceChildren();
+  if ($('#recommendStatus')) $('#recommendStatus').textContent = '';
+  if ($('#recommendationSection')) $('#recommendationSection').hidden = true;
+  if ($('#viewRecommendation')) $('#viewRecommendation').hidden = true;
+}
 function renderFrontRecordCard(record) {
   const section = sections.find((item) => item.id === record.sectionId);
   return `
     <article class="front-record">
-      ${record.imageUrl ? `<img class="front-record-image" src="${record.imageUrl}" alt="${section?.name || "座区"}视角" />` : ""}
-      <strong>${section?.name || "未知座区"} · ${record.row || "排数待补充"}</strong>
-      <div class="tag-list">${(record.tags || []).map((tag) => `<span>${tag}</span>`).join("")}</div>
-      <p>${record.reviewText || "暂无文字评价"}</p>
-      <span>来源：${record.sourcePlatform || "来源待补充"}</span>
-      ${record.sourceUrl ? `<a href="${record.sourceUrl}" target="_blank" rel="noreferrer">查看原帖</a>` : ""}
+      ${record.imageUrl ? `<img class="front-record-image" loading="lazy" decoding="async" src="${escapeHtml(safeUrl(record.imageUrl))}" alt="${escapeHtml(section?.name || "座区")}视角" />` : ""}
+      <strong>${escapeHtml(section?.name || "未知座区")} · ${escapeHtml(record.row || "排数待补充")}</strong>
+      <div class="tag-list">${(record.tags || []).map((tag) => `<span>${escapeHtml(tag)}</span>`).join("")}</div>
+      ${['stageDistance','viewingAngle','obstruction','shootingFriendly'].map((k,i)=>'<div class="record-fact">'+['距离舞台','观看角度','遮挡','拍摄友好度'][i]+'：'+escapeHtml(record[k] || '待补充')+'</div>').join('')}
+      ${record.shootingFriendly ? '<p>拍摄参考：'+(/较好|优秀/.test(record.shootingFriendly)?'★★★★☆':/较差/.test(record.shootingFriendly)?'★★☆☆☆':'★★★☆☆')+'（依据文字评价）</p>' : ''}
+      <p>${escapeHtml(record.description || record.reviewText || "暂无文字评价")}</p>
+      <span>来源：${escapeHtml(record.source || record.sourcePlatform || "来源待补充")}</span><p>${escapeHtml(record.createdAt || '')}</p>
+      ${record.sourceUrl ? `<a href="${escapeHtml(safeUrl(record.sourceUrl))}" target="_blank" rel="noreferrer">查看原帖</a>` : ""}
     </article>
   `;
 }
@@ -365,7 +426,7 @@ function renderReviews() {
   reviewGrid.innerHTML = published.length ? published.slice(-6).reverse().map((record) => {
     const venue = venues.find((item) => item.id === record.venueId);
     const section = sections.find((item) => item.id === record.sectionId);
-    return `<article class="review-card"><div class="review-topline"><h3>${venue?.name || "未知场馆"} · ${section?.name || "未知座区"}</h3><span class="rating-pill">${record.row || "排数待补充"}</span></div><p>${record.reviewText || "暂无文字评价"}</p></article>`;
+    return `<article class="review-card"><div class="review-topline"><h3>${escapeHtml(venue?.name || "未知场馆")} · ${escapeHtml(section?.name || "未知座区")}</h3><span class="rating-pill">${escapeHtml(record.row || "排数待补充")}</span></div><p>${escapeHtml(record.reviewText || "暂无文字评价")}</p></article>`;
   }).join("") : `<article class="empty-state"><h3>暂无真实视角</h3><p>后台发布视角记录后，这里会展示最新内容。</p></article>`;
 }
 
@@ -373,39 +434,40 @@ function renderAdminLists() {
   if (!isAdminPage) return;
   $("#venueAdminList").innerHTML = venues.map((venue) => `
     <article class="admin-list-item">
-      <strong>${venue.city} · ${venue.name}</strong>
-      <p>${venue.capacity || "容量待核验"} · ${venue.status || "已发布"} · ${venue.isHot ? "热门" : "普通"}</p>
-      <span>${venue.description || "简介待补充"}</span>
-      <button class="inline-action" type="button" data-edit-venue="${venue.id}">编辑</button>
-      <button class="inline-action danger" type="button" data-delete-venue="${venue.id}">删除</button>
+      <strong>${escapeHtml(venue.city)} · ${escapeHtml(venue.name)}</strong>
+      <p>${escapeHtml(venue.capacity || "容量待核验")} · ${escapeHtml(venue.status || "已发布")} · ${venue.isHot ? "热门" : "普通"}</p>
+      <span>${escapeHtml(venue.description || "简介待补充")}</span>
+      <button class="inline-action" type="button" data-edit-venue="${escapeHtml(venue.id)}">编辑</button>
+      <button class="inline-action danger" type="button" data-delete-venue="${escapeHtml(venue.id)}">删除</button>
     </article>
   `).join("");
 
   $("#seatMapAdminList").innerHTML = seatMaps.length ? seatMaps.map((map) => {
     const venue = venues.find((item) => item.id === map.venueId);
-    return `<article class="admin-list-item"><strong>${map.name}</strong><p>${venue?.name || ""} · ${map.type} · ${map.isDefault ? "默认图" : "非默认"}</p><span>${map.sourceNote || "来源待补充"}</span><button class="inline-action danger" type="button" data-delete-map="${map.id}">删除</button></article>`;
+    return `<article class="admin-list-item"><strong>${map.name}</strong><p>${escapeHtml(venue?.name || "")} · ${map.type} · ${map.isDefault ? "默认图" : "非默认"}</p><span>${map.sourceNote || "来源待补充"}</span><button class="inline-action danger" type="button" data-delete-map="${map.id}">删除</button></article>`;
   }).join("") : `<article class="empty-state"><h3>暂无座位图</h3><p>上传后会显示在这里。</p></article>`;
 
   $("#sectionAdminList").innerHTML = sections.length ? sections.map((section) => {
     const venue = venues.find((item) => item.id === section.venueId);
-    return `<article class="admin-list-item"><strong>${section.name}</strong><p>${venue?.name || ""} · ${section.sectionType || "类型待补充"} · ${section.position || "位置待补充"}</p><span>${section.note || "备注待补充"}</span><button class="inline-action" type="button" data-edit-section="${section.id}">编辑</button><button class="inline-action danger" type="button" data-delete-section="${section.id}">删除</button></article>`;
+    return `<article class="admin-list-item"><strong>${escapeHtml(section.name)}</strong><p>${escapeHtml(venue?.name || "")} · ${escapeHtml(section.sectionType || "类型待补充")} · ${escapeHtml(section.position || "位置待补充")}</p><span>${escapeHtml(section.note || "备注待补充")}</span><button class="inline-action" type="button" data-edit-section="${escapeHtml(section.id)}">编辑</button><button class="inline-action danger" type="button" data-delete-section="${escapeHtml(section.id)}">删除</button></article>`;
   }).join("") : `<article class="empty-state"><h3>暂无座区</h3><p>可手动添加，也可在录入视角时自动生成。</p></article>`;
 
   $("#recordAdminList").innerHTML = viewRecords.length ? viewRecords.map((record) => {
     const venue = venues.find((item) => item.id === record.venueId);
     const section = sections.find((item) => item.id === record.sectionId);
-    return `<article class="admin-list-item"><strong>${venue?.name || ""} · ${section?.name || ""}</strong><p>${record.row || "排数待补充"} · ${record.status}</p><span>${record.sourcePlatform || "来源待补充"}</span><button class="inline-action" type="button" data-edit-record="${record.id}">修改</button><button class="inline-action danger" type="button" data-delete-record="${record.id}">删除</button></article>`;
+    return `<article class="admin-list-item"><strong>${escapeHtml(venue?.name || "")} · ${escapeHtml(section?.name || "")}</strong><p>${escapeHtml(record.row || "排数待补充")} · ${escapeHtml(record.status)}</p><span>${escapeHtml(record.sourcePlatform || "来源待补充")}</span><button class="inline-action" type="button" data-edit-record="${escapeHtml(record.id)}">修改</button><button class="inline-action danger" type="button" data-delete-record="${escapeHtml(record.id)}">删除</button></article>`;
   }).join("") : `<article class="empty-state"><h3>暂无视角记录</h3><p>录入记录并设置为已发布后，前台才会展示。</p></article>`;
 
   const queue = viewRecords.filter((record) => record.status === "草稿" || record.status === "待审核");
-  $("#reviewQueueList").innerHTML = queue.length ? queue.map((record) => `<article class="admin-list-item"><strong>${record.eventName || "待审核内容"}</strong><p>请核对场馆、座区、排数、评价和标签。确认后改为“已发布”。</p><span>当前状态：${record.status}</span><button class="inline-action" type="button" data-edit-record="${record.id}">编辑</button><button class="inline-action danger" type="button" data-delete-record="${record.id}">删除</button></article>`).join("") : `<article class="empty-state"><h3>暂无待审核内容</h3><p>MVP 暂不开放用户投稿。</p></article>`;
+  $("#reviewQueueList").innerHTML = queue.length ? queue.map((record) => `<article class="admin-list-item"><strong>${escapeHtml(sections.find(item => item.id === record.sectionId)?.name || "待审核内容")}</strong><p>请核对场馆、座区、排数、评价和标签。确认后改为“已发布”。</p><span>当前状态：${escapeHtml(record.status)}</span><button class="inline-action" type="button" data-edit-record="${escapeHtml(record.id)}">编辑</button><button class="inline-action danger" type="button" data-delete-record="${escapeHtml(record.id)}">删除</button></article>`).join("") : `<article class="empty-state"><h3>暂无待审核内容</h3><p>MVP 暂不开放用户投稿。</p></article>`;
 }
 
 function renderAll() {
   ensureSelectedSection();
+  if ($("#assistantVenue")) $("#assistantVenue").textContent = `当前场馆：${currentVenue()?.name || ""}`;
   renderStats();
   renderVenueOptions();
-  setFormTags();
+  if (!$("#recordForm")?.elements.recordId.value) setFormTags();
   renderVenues();
   renderHotCities();
   renderRecentUpdates();
@@ -413,23 +475,44 @@ function renderAll() {
   renderDetail();
   renderReviews();
   renderAdminLists();
+  if (isFrontPage) search({ keepExpanded: true });
 }
 
-function search() {
-  const input = $("#searchInput");
-  const query = (input?.value || "").trim().toLowerCase();
-  const results = visibleVenues().filter((venue) => `${venue.name} ${venue.city} ${venue.type}`.toLowerCase().includes(query));
-  renderVenues(query ? results : visibleVenues());
-  updateVenueResultSummary(input?.value?.trim() || "", query ? results.length : visibleVenues().length);
-  if (results[0]) {
-    selectedVenueId = results[0].id;
-    selectedSectionId = venueSections(selectedVenueId)[0]?.id || null;
-    recordFilter = { section: "", row: "", seat: "" };
-    showAllVenueRecords = false;
-    renderSeatMap();
-    renderDetail();
+function search({ keepExpanded = false } = {}) {
+  if (!isFrontPage) return;
+  clearTimeout(searchTimer);
+  const query = $('#searchInput').value.trim();
+  if (query !== searchQuery || !keepExpanded) searchExpanded = false;
+  searchQuery = query;
+  const active = Boolean(query);
+  $('#searchResults').hidden = !active;
+  $('#routeNotice').hidden = true;
+  $('#homeContent').classList.toggle('is-searching', active);
+  const results = visibleVenues().filter(venue => SeatViewSearch.matchesVenue(venue, query));
+  $('#searchResultCount').textContent = active ? '找到 ' + results.length + ' 个相关场馆' : '';
+  $('#searchResultList').replaceChildren();
+  $('#showAllSearchResults').hidden = !active || searchExpanded || results.length <= 4;
+  if (!active) return;
+  if (!results.length) {
+    const empty = document.createElement('p');
+    empty.className = 'search-empty';
+    empty.textContent = '暂未找到相关场馆，试试其他城市或场馆名称。';
+    $('#searchResultList').appendChild(empty);
+    return;
   }
-  $("#venues")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  for (const venue of searchExpanded ? results : results.slice(0, 4)) {
+    const link = document.createElement('a');
+    const count = venueSections(venue.id).length;
+    link.className = 'search-result-card';
+    link.href = '/?venue=' + encodeURIComponent(venue.id) + '#viewer';
+    link.innerHTML = '<div><strong>' + escapeHtml(venue.name) + '</strong><span>' + escapeHtml(venue.city) + ' · ' + escapeHtml(venue.type || '场馆') + ' · ' + (count ? count + ' 个座区可查看' : '视角待补充') + '</span></div><span class="result-cta">查看座位图与 AI 座区推荐 →</span>';
+    link.addEventListener('click', event => {
+      if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+      event.preventDefault(); selectVenue(venue.id);
+    });
+    $('#searchResultList').appendChild(link);
+  }
+  $('#showAllSearchResults').textContent = '查看全部 ' + results.length + ' 个结果 ↓';
 }
 
 function fillVenueForm(id) {
@@ -474,29 +557,65 @@ function fillRecordForm(id) {
   form.querySelector('[name="sectionName"]').value = section?.name || "";
   form.querySelector('[name="row"]').value = record.row || "";
   form.querySelector('[name="seatNo"]').value = record.seatNo || "";
-  form.querySelector('[name="artist"]').value = record.artist || "";
-  form.querySelector('[name="eventName"]').value = record.eventName || "";
+  form.querySelector('[name="image"]').value = "";
+  showRecordImage(record.imageUrl || record.image || "");
   form.querySelector('[name="publishedAt"]').value = record.publishedAt || "";
   form.querySelector('[name="sourcePlatform"]').value = record.sourcePlatform || "";
   form.querySelector('[name="sourceUrl"]').value = record.sourceUrl || "";
-  form.querySelector('[name="status"]').value = record.status || "草稿";
+  form.querySelector('[name="status"]').value = record.status || "已发布";
   form.querySelector('[name="reviewText"]').value = record.reviewText || "";
+  for (const k of ['stageDistance','viewingAngle','obstruction','shootingFriendly']) form.elements[k].value = record[k] || '';
   setFormTags(record.tags || []);
   $('[data-admin-tab="recordAdmin"]')?.click();
   form.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
+function showRecordImage(url) {
+  const preview = $("#recordImagePreview");
+  if (!preview) return;
+  const src = safeUrl(url);
+  preview.hidden = !src;
+  if (src) preview.src = src;
+  else preview.removeAttribute("src");
+}
+
 function bindEvents() {
+  $('#recordForm [name="image"]')?.addEventListener('change', async (event) => {
+    const image = await fileToDataUrl(event.target.files[0]);
+    const previous = viewRecords.find(item => item.id === $('#recordForm').elements.recordId.value);
+    showRecordImage(image || previous?.imageUrl || previous?.image || '');
+  });
   $("#logoutButton")?.addEventListener("click", async (event) => {
     event.preventDefault();
     await fetch("/api/logout", { method: "POST" });
     window.location.href = "/login.html";
   });
 
-  $("#searchButton")?.addEventListener("click", search);
+  $("#searchButton")?.addEventListener("click", () => search());
   $("#searchInput")?.addEventListener("keydown", (event) => {
-    if (event.key === "Enter") search();
+    if (event.key === "Enter" && !event.isComposing) { event.preventDefault(); search(); }
   });
+  $('#searchInput')?.addEventListener('input', event => {
+    clearTimeout(searchTimer);
+    if (event.isComposing) return;
+    if (!event.target.value.trim()) search();
+    else searchTimer = setTimeout(() => search(), 160);
+  });
+  $('#searchInput')?.addEventListener('compositionend', () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => search(), 160); });
+  $('#clearSearch')?.addEventListener('click', () => { $('#searchInput').value = ''; search(); $('#searchInput').focus(); });
+  $('#showAllSearchResults')?.addEventListener('click', () => { searchExpanded = true; search({ keepExpanded: true }); });
+  $('#showMoreVenues')?.addEventListener('click', () => { hotVenuesExpanded = !hotVenuesExpanded; renderVenues(); });
+  $('#backToHome')?.addEventListener('click', () => showHome());
+  $('#openAiAssistant')?.addEventListener('click', () => { $('#aiAssistantBox').scrollIntoView({ block: 'start', behavior: 'smooth' }); $('#recommendText').focus({ preventScroll: true }); });
+  $$('[data-home-link]').forEach(link => link.addEventListener('click', event => {
+    if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    const hash = link.getAttribute('href').startsWith('#') ? link.getAttribute('href') : '#home';
+    if (hash !== '#home') { $('#searchInput').value = ''; searchExpanded = false; }
+    showHome({ hash });
+    if (!searchQuery && hash !== '#home') $(hash)?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }));
+  window.addEventListener('popstate', () => restoreFrontRoute());
   $$(".quick-tags button").forEach((button) => button.addEventListener("click", () => {
     $("#searchInput").value = button.dataset.query;
     search();
@@ -676,25 +795,31 @@ async function bindForms() {
     const previous = viewRecords.find((item) => item.id === recordId);
     const imageUrl = await fileToDataUrl(data.get("image"));
     const record = {
-      id: recordId || slugify(`${venueId}-${section.id}`),
+      ...previous,
+      stageDistance: data.get('stageDistance') || null, viewingAngle: data.get('viewingAngle') || null, obstruction: data.get('obstruction') || null, shootingFriendly: data.get('shootingFriendly') || null,
+      description: data.get('reviewText'), source: data.get('sourcePlatform'), createdAt: previous?.createdAt || new Date().toISOString(), venueName: venues.find(v=>v.id===venueId)?.name, section: section.name,
+      id: recordId || slugify(`${venueId}-${escapeHtml(section.id)}`),
       venueId,
       sectionId: section.id,
       row: data.get("row"),
       seatNo: data.get("seatNo"),
-      artist: data.get("artist"),
-      eventName: data.get("eventName"),
       publishedAt: data.get("publishedAt"),
-      imageUrl: imageUrl || previous?.imageUrl || "",
+      imageUrl: imageUrl || previous?.imageUrl || previous?.image || "",
+      image: imageUrl || previous?.imageUrl || previous?.image || "",
       reviewText: data.get("reviewText"),
       sourcePlatform: data.get("sourcePlatform"),
       sourceUrl: data.get("sourceUrl"),
       tags: selectedFormTags(form),
-      status: data.get("status")
+      status: data.get("status") || previous?.status || "已发布"
     };
+    delete record.artist;
+    delete record.eventName;
     viewRecords = recordId ? viewRecords.map((item) => item.id === recordId ? record : item) : [...viewRecords, record];
     selectedVenueId = venueId;
     selectedSectionId = section.id;
     form.reset();
+    form.elements.recordId.value = "";
+    showRecordImage("");
     setFormTags();
     await saveState();
     renderAll();
@@ -706,6 +831,7 @@ async function boot() {
   bindEvents();
   bindForms();
   renderAll();
+  restoreFrontRoute({ initial: true });
 }
 
 boot();

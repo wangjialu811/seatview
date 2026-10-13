@@ -1,0 +1,16 @@
+const assert=require('node:assert/strict');
+const {matchesVenue}=require('../assets/venue-search');
+const db=require('../data/db.json');
+const visible=db.venues.filter(v=>v.status!=='已下架');
+const find=query=>visible.filter(v=>matchesVenue(v,query));
+assert.equal(find(' 北京 ').length,4);
+assert.equal(find('鸟巢')[0].id,'beijing-birdnest');
+assert.equal(find('国家体育场')[0].id,'beijing-birdnest');
+assert.equal(find('南京奥体中心')[0].id,'nanjing-olympic-stadium');
+assert.equal(find('南京体育场')[0].id,'nanjing-olympic-stadium');
+assert.equal(find('不存在的场馆XYZ').length,0);
+assert.equal(find('北京 鸟巢')[0].id,'beijing-birdnest');
+assert.ok(matchesVenue({name:'测试馆',city:'测试',aliases:['ABC Arena']},'abc'));
+assert.ok(matchesVenue({name:'测试馆',city:'测试',aliases:'另一个馆名'},'另一个'));
+assert.ok(matchesVenue({name:'测试馆'},'   '));
+console.log('PASS: city, venue, Chinese abbreviation/fuzzy matching, aliases, whitespace, combined keywords, empty results.');

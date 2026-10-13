@@ -1,3 +1,5 @@
+require('./services/env');
+const ai = require('./services/aiService');
 const http = require("http");
 const crypto = require("crypto");
 const fs = require("fs");
@@ -28,6 +30,11 @@ const mime = {
 function ensureDb() {
   if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
   if (!fs.existsSync(dbPath)) {
+    const seedPath = path.join(root, 'data', 'db.json');
+    if (seedPath !== dbPath && fs.existsSync(seedPath)) {
+      fs.copyFileSync(seedPath, dbPath);
+      return;
+    }
     fs.writeFileSync(dbPath, JSON.stringify({
       venues: null,
       seatMaps: [],
@@ -88,7 +95,9 @@ function redirectToLogin(res) {
 function safeStaticPath(urlPath) {
   const decoded = decodeURIComponent(urlPath === "/" ? "/index.html" : urlPath);
   const target = path.resolve(root, decoded.replace(/^\/+/, ""));
-  if (!target.toLowerCase().startsWith(root.toLowerCase())) return null;
+  if (!target.toLowerCase().startsWith((root + path.sep).toLowerCase())) return null;
+  const relative = path.relative(root, target).replace(/\\/g, '/');
+  if (!['index.html','admin.html','login.html','app.js','ai-ui.js','styles.css','鸟巢.jpg','鸟巢-552.jpg','青岛国信.png'].includes(relative) && !relative.startsWith('assets/')) return null;
   return target;
 }
 
@@ -106,6 +115,38 @@ const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host}`);
 
+    if (url.pathname.startsWith('/api/ai/') && req.method === 'POST') {
+      if (url.pathname !== '/api/ai/recommend' && !isAdminAuthenticated(req)) return sendJson(res,401,{error:'请先登录后台'});
+      const payload = JSON.parse(await readBody(req) || '{}');
+      const db = JSON.parse(fs.readFileSync(dbPath,'utf8'));
+      if (url.pathname === '/api/ai/extract') {
+        if (typeof payload.text !== 'string' || !payload.text.trim()) return sendJson(res,400,{error:'请先输入观演描述。'});
+        if (payload.text.length > 5000) return sendJson(res,400,{error:'描述最多5000字'});
+        return sendJson(res,200,await ai.extract(payload.text,db.venues || []));
+      }
+      if (url.pathname === '/api/ai/recommend') {
+        const venue = db.venues?.find(v=>v.id===payload.venueId && v.status !== '已下架');
+        if (!venue) return sendJson(res,404,{error:'场馆不存在'});
+        if (typeof payload.text !== 'string' || !payload.text.trim() || payload.text.length>5000) return sendJson(res,400,{error:'请输入选座需求（最多5000字）。'});
+        const seen = new Set();
+        const records = db.viewRecords.filter(r=>r.venueId===venue.id && r.status==='已发布').map(r=>({...r,section:db.sections.find(s=>s.id===r.sectionId && s.venueId===venue.id)?.name})).filter(r=>{if(!r.section || seen.has(r.sectionId))return false;seen.add(r.sectionId);return true;}).map(r=>({id:r.id,sectionId:r.sectionId,section:r.section,stageDistance:r.stageDistance||null,viewingAngle:r.viewingAngle||null,obstruction:r.obstruction||null,shootingFriendly:r.shootingFriendly||null,tags:r.tags||[],description:r.description||r.reviewText,source:r.source||r.sourcePlatform}));
+        if (!records.length) return sendJson(res,200,{mode:'mock',data:{primary:null,alternatives:[],notice:'当前场馆暂无足够座区数据，暂时无法进行 AI 推荐。'}});
+        return sendJson(res,200,await ai.recommend(payload.text,records));
+      }
+      if (url.pathname === '/api/ai/records') {
+        const venue=db.venues?.find(v=>v.id===payload.venueId);
+        if(!venue || typeof payload.section!=='string' || !payload.section.trim() || typeof payload.summary!=='string' || !payload.summary.trim()) return sendJson(res,400,{error:'请选择已有场馆，并填写座区及总结。'});
+        if (!Array.isArray(payload.tags) || payload.tags.some(t=>typeof t!=='string')) return sendJson(res,400,{error:'标签格式错误'});
+        for(const k of ['stageDistance','viewingAngle','obstruction','shootingFriendly','source']) if(payload[k]!==null && typeof payload[k]!=='string') return sendJson(res,400,{error:'字段格式错误'});
+        if(payload.row != null && typeof payload.row !== 'string') return sendJson(res,400,{error:'排数格式错误'});
+        if(payload.image && !/^data:image\/(png|jpeg|webp);base64,/.test(payload.image)) return sendJson(res,400,{error:'图片格式错误'});
+        let section=db.sections.find(s=>s.venueId===venue.id && s.name===payload.section.trim());
+        if(!section){section={id:crypto.randomUUID(),venueId:venue.id,name:payload.section.trim(),position:payload.viewingAngle||'',note:'AI解析后人工确认'};db.sections.push(section);}
+        const record={id:crypto.randomUUID(),venueId:venue.id,venueName:venue.name,sectionId:section.id,section:section.name,row:payload.row || '',image:payload.image||'',imageUrl:payload.image||'',stageDistance:payload.stageDistance,viewingAngle:payload.viewingAngle,obstruction:payload.obstruction,shootingFriendly:payload.shootingFriendly,description:payload.summary,reviewText:payload.summary,rawDescription:payload.rawDescription||'',source:payload.source||'运营录入（AI辅助，人工确认）',sourcePlatform:payload.source||'运营录入（AI辅助，人工确认）',tags:payload.tags,createdAt:new Date().toISOString(),status:'已发布'};
+        db.viewRecords.push(record);fs.writeFileSync(dbPath,JSON.stringify(db,null,2));return sendJson(res,201,{ok:true,record});
+      }
+      return sendJson(res,404,{error:'接口不存在'});
+    }
     if (url.pathname === "/api/login" && req.method === "POST") {
       const body = await readBody(req);
       const payload = JSON.parse(body || "{}");
@@ -139,6 +180,35 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (url.pathname === "/api/public-state" && req.method === "GET") {
+      ensureDb();
+      const db = JSON.parse(fs.readFileSync(dbPath, "utf8"));
+      const mediaUrl = (kind, item, value) => value?.startsWith('data:image/') ? `/api/media/${kind}/${encodeURIComponent(item.id)}` : value || '';
+      const venues = (db.venues || []).filter(v => v.status !== '已下架').map(v => ({...v,coverImage:mediaUrl('venue',v,v.coverImage)}));
+      const venueIds = new Set(venues.map(v => v.id));
+      const records = (db.viewRecords || []).filter(r => r.status === '已发布' && venueIds.has(r.venueId)).map(r => {
+        const {image, rawDescription, ...record} = r;
+        return {...record,imageUrl:mediaUrl('record',r,r.imageUrl || image)};
+      });
+      sendJson(res, 200, {venues, sections:(db.sections || []).filter(s=>venueIds.has(s.venueId)),seatMaps:(db.seatMaps || []).filter(m=>venueIds.has(m.venueId)).map(m=>({...m,url:mediaUrl('map',m,m.url)})),viewRecords:records,xhsDrafts:[]});
+      return;
+    }
+
+    if (url.pathname.startsWith('/api/media/') && req.method === 'GET') {
+      ensureDb();
+      const db = JSON.parse(fs.readFileSync(dbPath, 'utf8'));
+      const [, , , kind, id] = url.pathname.split('/');
+      const collection = {venue:db.venues,map:db.seatMaps,record:db.viewRecords}[kind] || [];
+      const item = collection.find(item=>item.id===decodeURIComponent(id || ''));
+      const venue = kind === 'venue' ? item : db.venues?.find(v=>v.id===item?.venueId);
+      const value = kind==='venue' ? item?.coverImage : kind==='map' ? item?.url : item?.imageUrl || item?.image;
+      const match = value?.match(/^data:(image\/(?:png|jpeg|webp));base64,([\s\S]+)$/);
+      if (!match || !venue || venue.status==='已下架' || (kind==='record' && item.status!=='已发布')) return sendJson(res,404,{error:'图片不存在'});
+      res.writeHead(200, {'Content-Type':match[1],'Cache-Control':'no-cache','X-Content-Type-Options':'nosniff'});
+      res.end(Buffer.from(match[2], 'base64'));
+      return;
+    }
+
     if (url.pathname === "/api/state" && req.method === "POST") {
       if (!isAdminAuthenticated(req)) {
         sendJson(res, 401, { ok: false, error: "请先登录后台" });
@@ -147,6 +217,7 @@ const server = http.createServer(async (req, res) => {
       ensureDb();
       const body = await readBody(req);
       const state = JSON.parse(body || "{}");
+      if (!['venues','seatMaps','sections','viewRecords','xhsDrafts'].every(k=>Array.isArray(state[k]))) return sendJson(res,400,{error:'数据结构错误，未保存'});
       fs.writeFileSync(dbPath, JSON.stringify(state, null, 2), "utf8");
       sendJson(res, 200, { ok: true });
       return;
@@ -167,7 +238,7 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200, { "Content-Type": mime[path.extname(filePath).toLowerCase()] || "application/octet-stream" });
     fs.createReadStream(filePath).pipe(res);
   } catch (error) {
-    sendJson(res, 500, { ok: false, error: error.message });
+    sendJson(res, error instanceof SyntaxError ? 400 : 500, { ok: false, error: error instanceof SyntaxError ? "请求 JSON 格式错误" : "请求失败，请稍后重试。" });
   }
 });
 
