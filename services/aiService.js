@@ -1,6 +1,7 @@
 const prompts = require('./prompts');
 const aiConfig = require('./aiConfig');
 const proxyFetch = require('./proxyFetch');
+const fields = require('../assets/view-fields');
 
 class AIRequestError extends Error {
   constructor(message) { super(message); this.name = 'AIRequestError'; }
@@ -16,7 +17,7 @@ function parseModelJson(content) {
   catch { throw new AIRequestError('模型返回的内容不是有效 JSON'); }
 }
 
-async function call(prompt, data) {
+async function call(prompt, data, image = null) {
   const config = aiConfig();
   let endpoint;
   try {
@@ -27,7 +28,7 @@ async function call(prompt, data) {
     model: config.model,
     max_tokens: 1800,
     response_format: { type: 'json_object' },
-    messages: [{ role: 'system', content: prompt }, { role: 'user', content: JSON.stringify(data) }]
+    messages: [{ role: 'system', content: prompt }, { role: 'user', content: image ? [{type:'text',text:JSON.stringify(data)},{type:'image_url',image_url:{url:image}}] : JSON.stringify(data) }]
   };
   // Ling 3.1 Flash does not support response_format (OpenRouter model specs).
   // Strict JSON parsing and business validation still run after generation.
@@ -86,20 +87,43 @@ async function run(real, mock) {
     return { data: mock(), mode: 'fallback', warning: 'AI 调用失败（' + reason + '），已降级为本地规则，可重试。' };
   }
 }
-exports.extract = (text, venues) => {
- const mock = () => {
- const v = venues.find(v=>text.includes(v.name) || (v.id==='nanjing-olympic-stadium' && text.includes('南京奥体中心体育场')));
- const d = {venueName:v?.name || null,section:text.match(/([A-Za-z]\d+|\d{2,4}|内场[A-Za-z])\s*区?/)?.[1] || null,row:text.match(/(?:第\s*)?([0-9]+|[一二三四五六七八九十百]+)\s*排/)?.[1] ? text.match(/(?:第\s*)?([0-9]+|[一二三四五六七八九十百]+)\s*排/)[1]+'排' : null,stageDistance:/不近|较远|很远/.test(text)?'远':/近/.test(text)?'近':/中等/.test(text)?'中等':null,viewingAngle:/侧面|偏侧/.test(text)?'侧面':/正面/.test(text)?'正面':null,obstruction:/没有.*遮挡|无.*遮挡|无遮挡/.test(text)?'无明显遮挡':/遮挡/.test(text)?'有遮挡':null,shootingFriendly:/不适合.*拍|拍摄.*差/.test(text)?'较差':/拍摄.*还可以|适合.*拍|拍摄.*好/.test(text)?'较好':null,tags:[],summary:text,confidence:0.65};
- d.tags=[d.stageDistance==='近'?'近舞台':null,d.viewingAngle==='侧面'?'侧视角':null,d.obstruction==='无明显遮挡'?'无遮挡':null,d.shootingFriendly==='较好'?'适合拍摄':null].filter(Boolean); return d;
- };
- return run(async()=>{const d=await call(prompts.extract,{text,venues:venues.map(v=>v.name)}); d.row = d.row == null ? mock().row : String(d.row); for(const k of ['venueName','section','row','stageDistance','viewingAngle','obstruction','shootingFriendly','summary']) if(d[k]!==null && typeof d[k]!=='string') throw Error('格式错误'); if(!Array.isArray(d.tags)||d.tags.some(t=>typeof t!=='string')||typeof d.confidence!=='number'||d.confidence<0||d.confidence>1) throw Error('格式错误'); return d;},mock);
+exports.extract = (text, venues, image = null) => {
+  const details = fields.seatDetails(text);
+  const mock = () => {
+    const venue = venues.find(v=>text.includes(v.name) || (v.id==='nanjing-olympic-stadium' && text.includes('南京奥体中心体育场')));
+    const d = {...details,venueName:venue?.name || null,summary:text || '图片信息待人工确认',tags:[],confidence:text ? 0.65 : 0};
+    d.stageDistance = fields.normalize('stageDistance', text);
+    d.viewingAngle = fields.normalize('viewingAngle', text);
+    d.obstruction = fields.normalize('obstruction', text);
+    d.shootingFriendly = fields.normalize('shootingFriendly', text);
+    d.tags = [d.stageDistance && /近/.test(d.stageDistance)?'近舞台':null,d.viewingAngle==='侧面'?'侧视角':null,d.obstruction && /无遮挡/.test(d.obstruction)?'无遮挡':null,d.shootingFriendly && /^(非常|比较)适合$/.test(d.shootingFriendly)?'适合拍摄':null].filter(Boolean);
+    return d;
+  };
+  return run(async()=>{
+    const parsed = await call(prompts.extract,{text,venues:venues.map(v=>v.name)},image);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw Error('格式错误');
+    const d = fields.normalizeRecord(parsed);
+    for (const field of ['venueName','section','row','seatNo','summary']) d[field] = typeof parsed[field]==='string' ? parsed[field].trim() || null : null;
+    d.row ||= details.row;
+    d.seatNo ||= details.seatNo;
+    // A model sometimes puts a complete seat description in section. Separate it.
+    const location = fields.seatDetails(d.section || '');
+    if (location.row || location.seatNo) {
+      d.section = location.section;
+      d.row ||= location.row; d.seatNo ||= location.seatNo;
+    }
+    d.summary ||= text || '图片信息待人工确认';
+    d.tags = Array.isArray(parsed.tags) ? parsed.tags.filter(t=>typeof t==='string') : [];
+    d.confidence = Number.isFinite(parsed.confidence) ? Math.max(0,Math.min(1,parsed.confidence)) : 0;
+    return d;
+  },mock);
 };
 exports.recommend = async (text, records) => {
  const local={photography:/不拍|不.*拍照/.test(text)?false:/拍摄|拍照|直拍|录像/.test(text),front:/正面/.test(text),near:/近|前排/.test(text),unobstructed:/无遮挡/.test(text),extension:/延伸台/.test(text)};
- const score=(r,p)=>(p.photography&&/较好|优秀/.test(r.shootingFriendly||'')?3:0)+(p.front&&r.viewingAngle==='正面'?3:0)+(p.near&&r.stageDistance==='近'?2:0)+(p.unobstructed&&/无.*遮挡/.test(r.obstruction||'')?3:0)+(p.extension&&r.tags?.includes('近延伸台')?3:0);
- const rank=p=>[...records].sort((a,b)=>score(b,p)-score(a,p));
+ const score=(record,p)=>{const r=fields.normalizeRecord(record);return (p.photography&&['非常适合','比较适合'].includes(r.shootingFriendly)?3:0)+(p.front&&['正面','偏正面'].includes(r.viewingAngle)?3:0)+(p.near&&['非常近','较近','近'].includes(r.stageDistance)?2:0)+(p.unobstructed&&['完全无遮挡','基本无遮挡'].includes(r.obstruction)?3:0)+(p.extension&&r.tags?.includes('近延伸台')?3:0);};
+ const rank=p=>records.map(r=>fields.normalizeRecord(r)).sort((a,b)=>score(b,p)-score(a,p));
  const mock=()=>{const list=rank(local);return {preferences:local,primary:list[0]?{recordId:list[0].id,score:4}:null,alternatives:list.slice(1,3).map(r=>({recordId:r.id,score:3}))};};
  const result=await run(async()=>{const p=await call(prompts.preferences,{text});if(!p||!['photography','front','near','unobstructed','extension'].every(k=>p[k]===null||typeof p[k]==='boolean')) throw Error('偏好格式'); const candidates=rank(p).slice(0,12);const d=await call(prompts.recommend,{text,preferences:p,records:candidates});if(!d.primary||!Array.isArray(d.alternatives)||d.alternatives.length>2)throw Error('格式');const picks=[d.primary,...d.alternatives];if(new Set(picks.map(x=>x.recordId)).size!==picks.length||picks.some(x=>!candidates.some(r=>r.id===x.recordId)||!Number.isInteger(x.score)||x.score<1||x.score>5))throw Error('越界');return {...d,preferences:p};},mock);
- const enrich=x=>{if(!x)return null;const r=records.find(r=>r.id===x.recordId);return {recordId:r.id,sectionId:r.sectionId,section:r.section,score:x.score,reasons:Object.entries({stageDistance:'舞台距离',viewingAngle:'观看角度',obstruction:'遮挡',shootingFriendly:'拍摄友好度'}).filter(([k])=>r[k]).map(([k,v])=>`${v}：${r[k]}`).concat((r.tags||[]).map(t=>'已有标签：'+t)),disadvantages:[r.viewingAngle==='侧面'?'观看角度偏侧':null,r.stageDistance==='远'?'距离舞台较远':null,/有遮挡|轻微/.test(r.obstruction||'')?r.obstruction:null].filter(Boolean),source:r.source||r.sourcePlatform||'来源待补充'};};
+ const enrich=x=>{if(!x)return null;const r=fields.normalizeRecord(records.find(r=>r.id===x.recordId));return {recordId:r.id,sectionId:r.sectionId,section:r.section,score:x.score,reasons:Object.entries({stageDistance:'舞台距离',viewingAngle:'观看角度',obstruction:'遮挡',shootingFriendly:'拍摄友好度'}).filter(([k])=>r[k]).map(([k,v])=>`${v}：${r[k]}`).concat((r.tags||[]).map(t=>'已有标签：'+t)),disadvantages:[/侧|后/.test(r.viewingAngle||'')?'观看角度：'+r.viewingAngle:null,/远/.test(r.stageDistance||'')?'距离舞台：'+r.stageDistance:null,r.obstruction && !/无遮挡/.test(r.obstruction)?r.obstruction:null].filter(Boolean),source:r.source||r.sourcePlatform||'来源待补充'};};
  result.data={preferences:result.data.preferences,primary:enrich(result.data.primary),alternatives:result.data.alternatives.map(enrich),notice:'推荐仅基于当前场馆已有已发布座区信息，数据量有限；部分为 Demo 示例。舞台布局和前排观众可能改变体验。'};return result;
 };

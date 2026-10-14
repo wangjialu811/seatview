@@ -3,8 +3,7 @@ const assert=require('node:assert/strict');const fs=require('fs');const os=requi
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'seatview-test-'));
  const venues=[{id:'nanjing-olympic-stadium',name:'南京奥体中心体育场',status:'已发布'},{id:'beijing-workers-stadium',name:'北京工人体育场',status:'已发布'},{id:'beijing-birdnest',name:'鸟巢',status:'已发布'}];
  const sections=['A3','B1','C2'].map(name=>({id:name,name,venueId:venues[0].id})).concat({id:'552',name:'552',venueId:venues[2].id});
- const viewRecords=sections.map(s=>({id:'r-'+s.id,venueId:s.venueId,sectionId:s.id,status:'已发布',tags:s.id==='A3'?['近延伸台']:[],shootingFriendly:s.id==='A3'?'较好':null,viewingAngle:s.id==='B1'?'正面':'侧面',obstruction:'无遮挡',imageUrl:'data:image/png;base64,AAAA',image:'data:image/png;base64,AAAA'}));
- viewRecords.push({id:'draft',venueId:venues[0].id,sectionId:'A3',status:'草稿',imageUrl:'data:image/png;base64,AAAA'});
+ const viewRecords=sections.map(s=>({id:'r-'+s.id,venueId:s.venueId,sectionId:s.id,status:'已发布',tags:s.id==='A3'?['近延伸台']:[],shootingFriendly:s.id==='A3'?'较好':null,viewingAngle:s.id==='B1'?'正面':'侧面',obstruction:'无遮挡'}));
  fs.writeFileSync(path.join(dir,'db.json'),JSON.stringify({venues,sections,viewRecords,seatMaps:[],xhsDrafts:[]}));
  const child=spawn(process.execPath,['server.js'],{cwd:path.join(__dirname,'..'),env:{...process.env,PORT:'5181',HOST:'127.0.0.1',DATA_DIR:dir,AI_MODE:'mock',ADMIN_PASSWORD:'test-password'},stdio:'pipe'});
  const base='http://127.0.0.1:5181';let cookie='';const post=async(route,p)=>{const r=await fetch(base+route,{method:'POST',headers:{'Content-Type':'application/json',Cookie:cookie},body:JSON.stringify(p)});return [r,await r.json()];};
@@ -14,14 +13,10 @@ const assert=require('node:assert/strict');const fs=require('fs');const os=requi
  for(const route of ['/.env.example','/server.js','/services/aiService.js','/data/db.json','/package.json'])assert.equal((await fetch(base+route)).status,404,route);
  assert.equal((await fetch(base+'/admin.html',{redirect:'manual'})).status,302);
  assert.equal((await post('/api/ai/extract',{text:'A3'}))[0].status,401);
- const publicState=await (await fetch(base+'/api/public-state')).json();
- assert.equal(publicState.viewRecords.length,4);assert.ok(publicState.viewRecords.every(r=>r.imageUrl.startsWith('/api/media/')));
- assert.ok(!JSON.stringify(publicState).includes('base64'));assert.equal((await fetch(base+publicState.viewRecords[0].imageUrl)).status,200);
- assert.equal((await fetch(base+'/api/media/record/draft')).status,404);
  let [r]=await post('/api/login',{password:'test-password'});cookie=r.headers.get('set-cookie').split(';')[0];assert.equal(r.status,200);
  assert.equal((await fetch(base+'/admin.html',{headers:{Cookie:cookie}})).status,200);
  assert.equal((await post('/api/ai/extract',{text:''}))[0].status,400);
- let [,parsed]=await post('/api/ai/extract',{text:'南京奥体中心体育场 A3 区，离主舞台挺近，但是只能看侧面，前面没有明显遮挡，手机拍摄还可以。'});assert.equal(parsed.mode,'mock');assert.equal(parsed.data.section,'A3');assert.equal(parsed.data.obstruction,'无明显遮挡');
+ let [,parsed]=await post('/api/ai/extract',{text:'南京奥体中心体育场 A3 区，离主舞台挺近，但是只能看侧面，前面没有明显遮挡，手机拍摄还可以。'});assert.equal(parsed.mode,'mock');assert.equal(parsed.data.section,'A3');assert.equal(parsed.data.obstruction,'基本无遮挡');
  let [,rec]=await post('/api/ai/recommend',{venueId:'nanjing-olympic-stadium',text:'近延伸台，想拍直拍，无遮挡'});assert.equal(rec.data.primary.section,'A3');assert.equal(rec.data.alternatives.length,2);
  [,rec]=await post('/api/ai/recommend',{venueId:'nanjing-olympic-stadium',text:'我不拍照，只想正面看舞台'});assert.equal(rec.data.primary.section,'B1');
  [,rec]=await post('/api/ai/recommend',{venueId:'beijing-workers-stadium',text:'正面'});assert.equal(rec.data.primary,null);

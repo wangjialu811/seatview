@@ -115,7 +115,7 @@
                 <input name="recordId" type="hidden" />
                 <label>场馆<select name="venueId" id="recordVenueSelect"></select></label>
                 <label>座区名称<input name="sectionName" placeholder="例如：301区 / 内场A区" required /></label>
-                <label>舞台距离<input name="stageDistance" /></label><label>观看角度<input name="viewingAngle" /></label><label>遮挡<input name="obstruction" /></label><label>拍摄友好度<input name="shootingFriendly" /></label><label>排数<input name="row" placeholder="例如：15排" /></label>
+                <label>舞台距离<select name="stageDistance"><option value="">待确认 / 未填写</option></select></label><label>观看角度<select name="viewingAngle"><option value="">待确认 / 未填写</option></select></label><label>遮挡<select name="obstruction"><option value="">待确认 / 未填写</option></select></label><label>拍摄友好度<select name="shootingFriendly"><option value="">待确认 / 未填写</option></select></label><label>排数<input name="row" placeholder="例如：15排" /></label>
                 <label>座位号（可选）<input name="seatNo" placeholder="例如：18号" /></label>
                 <label>发布时间<input name="publishedAt" type="date" /></label>
                 <label>视角图片<input name="image" type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" /></label>
@@ -140,7 +140,7 @@
               <div class="admin-list" id="recordAdminList"></div>
             </section>
 
-            <section class="admin-panel" id="aiAdmin"><h3>AI 智能录入</h3><p>自然语言描述 → 结构化预览 → 人工修改 → 确认保存</p><form id="extractForm" class="ai-box"><label for="rawDescription">原始观演描述</label><textarea id="rawDescription" maxlength="5000" placeholder="南京奥体中心体育场 A3 区，离主舞台挺近，但是延伸台过去以后只能看侧面，前面没有明显遮挡，手机拍摄还可以。"></textarea><button class="primary-wide" type="submit">AI 解析</button></form><p id="extractStatus" role="status"></p><form id="aiPreview" class="admin-form" hidden><h3 class="wide">解析结果预览 · 请核对后保存</h3><label>场馆<select name="venueId" required></select></label><label>座区<input name="section" required /></label><label>排数<input name="row" placeholder="例如：15排" /></label><label>舞台距离<input name="stageDistance" /></label><label>舞台角度<input name="viewingAngle" /></label><label>遮挡情况<input name="obstruction" /></label><label>拍摄友好度<input name="shootingFriendly" /></label><label class="wide">标签（逗号分隔）<input name="tags" /></label><label class="wide">AI 总结<textarea name="summary" required></textarea></label><label>来源<input name="source" value="运营录入（AI辅助，人工确认）" /></label><label>视角图片（可选）<input name="image" type="file" accept="image/png,image/jpeg,image/webp" /></label><p id="aiConfidence" class="wide"></p><button class="primary-wide" type="submit">确认保存</button></form><p id="saveAiStatus" role="status"></p><a id="savedVenueLink" hidden>查看该场馆详情</a></section>
+            <section class="admin-panel" id="aiAdmin"><h3>AI 智能录入</h3><p>自然语言描述 → 结构化预览 → 人工修改 → 确认保存</p><form id="extractForm" class="ai-box"><label for="rawDescription">原始观演描述</label><textarea id="rawDescription" maxlength="5000" placeholder="南京奥体中心体育场 A3 区，离主舞台挺近，但是延伸台过去以后只能看侧面，前面没有明显遮挡，手机拍摄还可以。"></textarea><label for="extractImage">辅助识别图片（可选，6 MB 以内）</label><input id="extractImage" type="file" accept="image/png,image/jpeg,image/webp" /><button class="primary-wide" type="submit">AI 解析</button></form><p id="extractStatus" role="status"></p><form id="aiPreview" class="admin-form" hidden><h3 class="wide">解析结果预览 · 请核对后保存</h3><label>场馆<select name="venueId" required></select></label><label>座区<input name="section" required /></label><label>排数<input name="row" placeholder="例如：15排" /></label><label>座位号（可选）<input name="seatNo" placeholder="例如：内场B3区10排6座" /></label><label>舞台距离<select name="stageDistance"><option value="">待确认 / 未填写</option></select></label><label>舞台角度<select name="viewingAngle"><option value="">待确认 / 未填写</option></select></label><label>遮挡情况<select name="obstruction"><option value="">待确认 / 未填写</option></select></label><label>拍摄友好度<select name="shootingFriendly"><option value="">待确认 / 未填写</option></select></label><label class="wide">标签（逗号分隔）<input name="tags" /></label><label class="wide">AI 总结<textarea name="summary" required></textarea></label><label>来源<input name="source" value="运营录入（AI辅助，人工确认）" /></label><label>视角图片（可选）<input name="image" type="file" accept="image/png,image/jpeg,image/webp" /></label><p id="aiConfidence" class="wide"></p><button class="primary-wide" type="submit">确认保存</button></form><p id="saveAiStatus" role="status"></p><a id="savedVenueLink" hidden>查看该场馆详情</a></section>
             <section class="admin-panel" id="reviewAdmin">
               <div class="panel-title compact"><h3>投稿审核（预留）</h3><span>MVP 暂不开放用户投稿</span></div>
               <div class="admin-note">后续开放用户投稿后，用户上传的图片、评价和来源链接会进入这里，管理员审核通过后再发布到前台。</div>
@@ -151,6 +151,6 @@
       </section>
     </main>
 
-    <script src="app.js"></script><script src="ai-ui.js"></script>
+    <script src="assets/view-fields.js"></script><script src="app.js"></script><script src="ai-ui.js"></script>
   </body>
 </html>

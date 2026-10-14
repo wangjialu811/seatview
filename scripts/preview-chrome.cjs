@@ -1,0 +1,13 @@
+const fs=require('node:fs');
+const path=require('node:path');
+const {spawn}=require('node:child_process');
+const url=process.argv[2] || 'http://127.0.0.1:5178/';
+const address=new URL(url);
+if(!['http:','https:'].includes(address.protocol))throw Error('Preview only supports HTTP/HTTPS URLs');
+const candidates=[process.env.SEATVIEW_CHROME_PATH,process.env.PROGRAMFILES && path.join(process.env.PROGRAMFILES,'Google/Chrome/Application/chrome.exe'),process.env['PROGRAMFILES(X86)'] && path.join(process.env['PROGRAMFILES(X86)'],'Google/Chrome/Application/chrome.exe'),process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA,'Google/Chrome/Application/chrome.exe')].filter(Boolean);
+const chrome=candidates.find(file=>fs.existsSync(file));
+if(!chrome)throw Error('Chrome is not installed. Set SEATVIEW_CHROME_PATH to its executable path.');
+const child=spawn(chrome,['--new-tab',address.href],{detached:true,stdio:'ignore',windowsHide:true});
+child.on('error',error=>{console.error(error.message);process.exitCode=1;});
+child.unref();
+console.log('Opened in Google Chrome: '+address.href);

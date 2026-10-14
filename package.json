@@ -5,6 +5,7 @@
   "description": "SeatView 演唱会座区决策助手 MVP",
   "scripts": {
     "start": "node server.js",
-    "test": "node tests/records.cjs && node tests/smoke.cjs && node tests/ai-provider.cjs && node tests/search.cjs"
+    "preview": "node scripts/preview-chrome.cjs",
+    "test": "node tests/records.cjs && node tests/view-fields.cjs && node tests/smoke.cjs && node tests/ai-provider.cjs && node tests/search.cjs"
   }
 }

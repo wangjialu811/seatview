@@ -294,9 +294,9 @@ function restoreFrontRoute({ initial = false } = {}) {
 
 function renderSeatMap() {
   const seatMap = $("#seatMap");
-  const sectionPicker = $("#seatSectionPicker");
+  const picker = $("#seatSectionPicker");
   if (!seatMap) return;
-  if (sectionPicker) sectionPicker.replaceChildren();
+  picker?.replaceChildren();
   const venue = currentVenue();
   if (!venue) { seatMap.innerHTML="<p>暂无场馆，请在后台新增场馆。</p>"; return; }
   const map = defaultSeatMap(venue.id);
@@ -306,21 +306,21 @@ function renderSeatMap() {
   $("#selectedVenueMeta").textContent = `${venue.city} · ${venue.type} · ${map ? map.name : "座位图待补充"}`;
   seatMap.style.transform = `scale(${zoom})`;
 
-  sectionList.forEach((section) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = `section-button ${section.id === selectedSectionId ? "active" : ""}`;
-    button.setAttribute("aria-pressed", String(section.id === selectedSectionId));
+  if (picker) picker.style.setProperty('--seat-button-min', `${Math.min(180, Math.max(84, ...sectionList.map(section=>section.name.length*14+28)))}px`);
+  for (const section of sectionList) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = `section-button ${section.id === selectedSectionId ? 'active' : ''}`;
     button.textContent = section.name;
-    button.addEventListener("click", () => {
+    button.setAttribute('aria-pressed', String(section.id === selectedSectionId));
+    button.addEventListener('click', ()=>{
       selectedSectionId = section.id;
       showAllVenueRecords = false;
-      recordFilter = { section: "", row: "", seat: "" };
-      renderSeatMap();
-      renderDetail();
+      recordFilter = {section:'',row:'',seat:''};
+      renderSeatMap(); renderDetail();
     });
-    sectionPicker?.appendChild(button);
-  });
+    picker?.appendChild(button);
+  }
 
   if (!map) {
     seatMap.innerHTML = `
@@ -407,7 +407,7 @@ function renderFrontRecordCard(record) {
   const section = sections.find((item) => item.id === record.sectionId);
   return `
     <article class="front-record">
-      ${record.imageUrl ? `<img class="front-record-image" loading="lazy" decoding="async" src="${escapeHtml(safeUrl(record.imageUrl))}" alt="${escapeHtml(section?.name || "座区")}视角" />` : ""}
+      ${record.imageUrl ? `<img class="front-record-image" src="${escapeHtml(safeUrl(record.imageUrl))}" alt="${escapeHtml(section?.name || "座区")}视角" />` : ""}
       <strong>${escapeHtml(section?.name || "未知座区")} · ${escapeHtml(record.row || "排数待补充")}</strong>
       <div class="tag-list">${(record.tags || []).map((tag) => `<span>${escapeHtml(tag)}</span>`).join("")}</div>
       ${['stageDistance','viewingAngle','obstruction','shootingFriendly'].map((k,i)=>'<div class="record-fact">'+['距离舞台','观看角度','遮挡','拍摄友好度'][i]+'：'+escapeHtml(record[k] || '待补充')+'</div>').join('')}
@@ -564,7 +564,7 @@ function fillRecordForm(id) {
   form.querySelector('[name="sourceUrl"]').value = record.sourceUrl || "";
   form.querySelector('[name="status"]').value = record.status || "已发布";
   form.querySelector('[name="reviewText"]').value = record.reviewText || "";
-  for (const k of ['stageDistance','viewingAngle','obstruction','shootingFriendly']) form.elements[k].value = record[k] || '';
+  for (const k of Object.keys(SeatViewFields.options)) SeatViewFields.fillField(form, k, record[k]);
   setFormTags(record.tags || []);
   $('[data-admin-tab="recordAdmin"]')?.click();
   form.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -701,6 +701,8 @@ function bindEvents() {
 }
 
 async function bindForms() {
+  SeatViewFields.initializeForm($('#recordForm'));
+  SeatViewFields.initializeForm($('#aiPreview'));
   $("#venueForm")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = event.currentTarget;
@@ -796,7 +798,7 @@ async function bindForms() {
     const imageUrl = await fileToDataUrl(data.get("image"));
     const record = {
       ...previous,
-      stageDistance: data.get('stageDistance') || null, viewingAngle: data.get('viewingAngle') || null, obstruction: data.get('obstruction') || null, shootingFriendly: data.get('shootingFriendly') || null,
+      ...Object.fromEntries(Object.keys(SeatViewFields.options).map(k=>[k, data.get(k) || (previous?.[k] && !SeatViewFields.normalize(k, previous[k]) ? previous[k] : null)])),
       description: data.get('reviewText'), source: data.get('sourcePlatform'), createdAt: previous?.createdAt || new Date().toISOString(), venueName: venues.find(v=>v.id===venueId)?.name, section: section.name,
       id: recordId || slugify(`${venueId}-${escapeHtml(section.id)}`),
       venueId,

@@ -12,7 +12,7 @@ const ai = require('../services/aiService');
   let submit;
   const form = {elements:fields, querySelector(selector){return fields[selector.match(/name="(.*?)"/)[1]];}, addEventListener(type, fn){if(type==='submit')submit=fn;}, scrollIntoView(){}, reset(){for(const [k,f] of Object.entries(fields))if(k!=='recordId')f.value='';}};
   const document = {querySelector(selector){return selector==='#recordForm'?form:selector==='#recordImagePreview'?preview:null;},querySelectorAll(){return [];}};
-  const context = vm.createContext({document, console, location:{search:''}, FormData:class{get(k){return fields[k]?.value;}}, URLSearchParams});
+  const context = vm.createContext({document, console, SeatViewFields:require('../assets/view-fields'), location:{search:''}, FormData:class{get(k){return fields[k]?.value;}}, URLSearchParams});
   vm.runInContext(fs.readFileSync('app.js','utf8').replace(/boot\(\);\s*$/, ''), context);
   vm.runInContext(`venues=[{id:'v',name:'场馆'}]; sections=[{id:'s',venueId:'v',name:'552区'}]; viewRecords=[{id:'r',venueId:'v',sectionId:'s',row:'15排',imageUrl:'data:image/png;base64,AAAA',reviewText:'原评价',sourcePlatform:'来源',status:'已发布'}]; setFormTags=()=>{}; selectedFormTags=()=>['无遮挡']; saveState=async()=>{}; renderAll=()=>{}; bindForms(); fillRecordForm('r');`, context);
   assert.equal(preview.hidden, false);

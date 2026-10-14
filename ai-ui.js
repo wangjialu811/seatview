@@ -4,17 +4,18 @@ async function aiRequest(route, payload) {
 }
 function busy(form,value,label){const b=form.querySelector('button[type="submit"]');b.disabled=value;b.textContent=value?'处理中…':label;}
 let extractSnapshot='';
+let extractImageSnapshot='';
 $('#openAiEntry')?.addEventListener('click',()=> $('[data-admin-tab="aiAdmin"]').click());
 $('#extractForm')?.addEventListener('submit',async e=>{
  e.preventDefault();const form=e.currentTarget;if(form.querySelector('button').disabled)return;
- const text=$('#rawDescription').value.trim();if(!text){$('#extractStatus').textContent='请先输入观演描述。';return;}
+ const text=$('#rawDescription').value.trim();const selectedImage=$('#extractImage')?.files[0];if(!text && !selectedImage){$('#extractStatus').textContent='请输入观演描述或上传图片。';return;}if(selectedImage?.size>6*1024*1024){$('#extractStatus').textContent='图片不能超过 6 MB。';return;}
  busy(form,true,'AI 解析');$('#aiPreview').hidden=true;$('#savedVenueLink').hidden=true;$('#saveAiStatus').textContent='';$('#extractStatus').textContent='AI 正在解析…';
- try{const result=await aiRequest('extract',{text});const d=result.data;const preview=$('#aiPreview');preview.reset();preview.elements.venueId.innerHTML='<option value="">请确认场馆</option>'+venues.map(v=>`<option value="${escapeHtml(v.id)}">${escapeHtml(v.name)}</option>`).join('');preview.elements.venueId.value=venues.find(v=>v.name===d.venueName)?.id || '';for(const k of ['section','row','stageDistance','viewingAngle','obstruction','shootingFriendly','summary'])preview.elements[k].value=d[k]||'';preview.elements.tags.value=d.tags.join(', ');$('#aiConfidence').textContent=`解析置信度：${Math.round(d.confidence*100)}%（仅作参考，不确定字段请人工补充）`;extractSnapshot=text;preview.hidden=false;$('#extractStatus').textContent=result.warning || '解析完成，请人工核对。';}
- catch{$('#extractStatus').textContent='AI 解析失败，请稍后重试。再次点击 AI 解析可重试。';}finally{busy(form,false,'AI 解析');}
+ try{const image=await fileToDataUrl(selectedImage);const result=await aiRequest('extract',{text,image});extractImageSnapshot=image;const d=result.data;const preview=$('#aiPreview');preview.reset();preview.elements.venueId.innerHTML='<option value="">请确认场馆</option>'+venues.map(v=>`<option value="${escapeHtml(v.id)}">${escapeHtml(v.name)}</option>`).join('');preview.elements.venueId.value=venues.find(v=>v.name===d.venueName)?.id || '';for(const k of ['section','row','seatNo','summary'])preview.elements[k].value=d[k]||'';for(const k of Object.keys(SeatViewFields.options))SeatViewFields.fillField(preview,k,d[k]);preview.elements.tags.value=(d.tags||[]).join(', ');$('#aiConfidence').textContent=`解析置信度：${Math.round(d.confidence*100)}%（仅作参考，不确定字段请人工补充）`;extractSnapshot=text;preview.hidden=false;$('#extractStatus').textContent=result.warning || '解析完成，请人工核对。';}
+ catch{$('#extractStatus').textContent='AI 解析失败，请稍后重试。也可以通过视角记录管理手动录入。';}finally{busy(form,false,'AI 解析');}
 });
 $('#aiPreview')?.addEventListener('submit',async e=>{
  e.preventDefault();const form=e.currentTarget;if(form.querySelector('button').disabled)return;busy(form,true,'确认保存');$('#saveAiStatus').textContent='正在保存…';
- try{const data=new FormData(form);const payload=Object.fromEntries(['venueId','section','row','stageDistance','viewingAngle','obstruction','shootingFriendly','summary','source'].map(k=>[k,data.get(k)||null]));payload.tags=String(data.get('tags')).split(/[,，]/).map(t=>t.trim()).filter(Boolean);payload.image=await fileToDataUrl(data.get('image'));payload.rawDescription=extractSnapshot;await aiRequest('records',payload);await loadServerState();renderAll();$('#saveAiStatus').textContent='保存成功，已发布到前台。';const link=$('#savedVenueLink');link.href='/?venue='+encodeURIComponent(payload.venueId)+'#viewer';link.hidden=false;form.hidden=true;}
+ try{const data=new FormData(form);const payload=Object.fromEntries(['venueId','section','row','seatNo','stageDistance','viewingAngle','obstruction','shootingFriendly','summary','source'].map(k=>[k,data.get(k)||null]));payload.tags=String(data.get('tags')).split(/[,，]/).map(t=>t.trim()).filter(Boolean);payload.image=await fileToDataUrl(data.get('image')) || extractImageSnapshot;payload.rawDescription=extractSnapshot;await aiRequest('records',payload);await loadServerState();renderAll();$('#saveAiStatus').textContent='保存成功，已发布到前台。';const link=$('#savedVenueLink');link.href='/?venue='+encodeURIComponent(payload.venueId)+'#viewer';link.hidden=false;form.hidden=true;}
  catch(error){$('#saveAiStatus').textContent='保存失败：'+error.message;}finally{busy(form,false,'确认保存');}
 });
 $('#recommendForm')?.addEventListener('submit',async e=>{

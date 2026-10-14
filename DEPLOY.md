@@ -1,5 +1,15 @@
 # SeatView 部署说明
 
+## 本地、GitHub 与 Render 同步
+
+现有仓库为 `wangjialu811/seatview`，部署分支为 `main`，网站地址为 `https://seatview.onrender.com`。代码提交并推送后，Render 的 On Commit 自动部署会构建该提交；只修改本地文件不会更新线上。
+
+本地 `data/db.json` 与 Render 运行中的数据文件是两个独立副本。部署时仓库中的 JSON 是初始数据；通过云端后台新增记录会立即在云端前台显示，通过本地后台新增记录不会自动传到云端。同步前应备份并比较两边的数据，保留线上独有记录，避免覆盖有效修改。
+
+当前免费实例没有持久磁盘，运行时新增内容可能在重启或部署时被仓库初始数据替换。长期保存云端录入需要持久磁盘或外部数据库；付费升级及新服务配置需另行确认。
+
+运行 `npm run preview` 可在 Google Chrome 打开本地前台；也可传入网址，例如 `npm run preview -- https://seatview.onrender.com`。脚本不会修改系统默认浏览器。可通过 `SEATVIEW_CHROME_PATH` 指定 Chrome 路径。
+
 ## 手机公网访问（临时演示）
 
 在项目目录运行 `./Start-Mobile.ps1`，脚本会启动网站、前台网关和 Cloudflare 通道，并输出 HTTPS 访问地址。也会将地址保存至 `.runtime/mobile-url.txt`。
